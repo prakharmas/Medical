@@ -25,7 +25,9 @@ export default function LoginCard({ activeTab, onTabChange, children }) {
           </button>
         </div>
         {children}
-        <p className="compliance">HIPAA compliant · SOC 2 Type II · ISO 27001 certified</p>
+        <p className="compliance">
+          HIPAA compliant ï¿½ SOC 2 Type II ï¿½ ISO 27001 certified
+        </p>
       </section>
     </main>
   );
