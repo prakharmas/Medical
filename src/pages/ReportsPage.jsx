@@ -1,50 +1,70 @@
 import { useState } from "react";
 import {
-  FileText,
-  Users,
-  History,
+  ClipboardList,
+  FlaskConical,
+  CalendarClock,
   Send,
-  ShieldCheck,
+  Briefcase,
   LogOut,
   FileDown,
+  FileText,
+  CheckCircle2,
 } from "lucide-react";
 
 const reportTypes = [
   {
-    icon: FileText,
+    id: "patient-summary",
+    icon: ClipboardList,
+    iconColor: "#2f80ed",
+    iconBg: "#edf5ff",
     title: "Patient Summary PDF",
-    description: "One-page overview of diagnosis, treatment, and current status.",
-    badges: ["PDF", "1 page"],
+    description: "Full clinical summary with all sections",
+    badges: ["SOAP", "Medications", "Timeline"],
   },
   {
-    icon: Users,
+    id: "tumor-board",
+    icon: FlaskConical,
+    iconColor: "#d6336c",
+    iconBg: "#ffe8f0",
     title: "Tumor Board Report",
-    description: "Multi-disciplinary case summary formatted for board review.",
-    badges: ["Multi-specialty", "PDF"],
+    description: "Structured report for MDT/tumor board",
+    badges: ["Pathology", "Stage", "Plan"],
   },
   {
-    icon: History,
+    id: "clinical-timeline",
+    icon: CalendarClock,
+    iconColor: "#2f80ed",
+    iconBg: "#edf5ff",
     title: "Clinical Timeline",
-    description: "Chronological record of diagnosis, treatment, and follow-up.",
-    badges: ["Chronological", "Interactive"],
+    description: "Visual chronological treatment history",
+    badges: ["Events", "Milestones"],
   },
   {
+    id: "referral-summary",
     icon: Send,
+    iconColor: "#c94f7c",
+    iconBg: "#fdeaf1",
     title: "Referral Summary",
-    description: "Condensed clinical brief for referring or receiving physicians.",
-    badges: ["Referral", "PDF"],
+    description: "Compact summary for specialist referral",
+    badges: ["1 page", "Key Findings"],
   },
   {
-    icon: ShieldCheck,
+    id: "insurance-summary",
+    icon: Briefcase,
+    iconColor: "#5b6b85",
+    iconBg: "#eef2f7",
     title: "Insurance Summary",
-    description: "Structured documentation formatted for insurance and claims.",
-    badges: ["Insurance", "PDF"],
+    description: "ICD-coded report for insurance claims",
+    badges: ["ICD-10", "Codes"],
   },
   {
+    id: "discharge-summary",
     icon: LogOut,
+    iconColor: "#7554b8",
+    iconBg: "#eee7fa",
     title: "Discharge Summary",
-    description: "Complete discharge record including plan and instructions.",
-    badges: ["Discharge", "PDF"],
+    description: "Structured discharge note with instructions",
+    badges: ["Instructions", "Follow-up"],
   },
 ];
 
@@ -52,8 +72,13 @@ const formats = ["PDF", "Word (.docx)", "FHIR R4", "HL7 v2", "CSV"];
 const sectionOptions = ["AI Summary", "Timeline", "Documents", "Doctor Signature"];
 
 export default function ReportsPage() {
+  const [selectedId, setSelectedId] = useState(reportTypes[0].id);
   const [format, setFormat] = useState("PDF");
   const [sections, setSections] = useState(sectionOptions);
+  const [generated, setGenerated] = useState(null); // holds { title, format } once "Generate" is clicked
+  const [generating, setGenerating] = useState(false);
+
+  const selectedReport = reportTypes.find((r) => r.id === selectedId) || reportTypes[0];
 
   const toggleSection = (section) => {
     setSections((current) =>
@@ -63,33 +88,56 @@ export default function ReportsPage() {
     );
   };
 
+  const handleSelectReport = (id) => {
+    setSelectedId(id);
+    setGenerated(null); // switching report type clears any previous preview
+  };
+
+  const handleGenerate = () => {
+    setGenerating(true);
+    setGenerated(null);
+    // simulate a short generation delay — swap this for a real API call,
+    // e.g. POST /api/reports/generate { type: selectedReport.id, format, sections }
+    setTimeout(() => {
+      setGenerating(false);
+      setGenerated({ title: selectedReport.title, format });
+    }, 900);
+  };
+
   return (
     <>
       <style>{`
         .reports-layout {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) 300px;
+          grid-template-columns: minmax(0, 1fr) 320px;
           gap: 20px;
           align-items: start;
         }
-        .reports-grid {
+        .reports-list {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 14px;
+          gap: 12px;
         }
         .report-card {
           display: flex;
+          width: 100%;
           gap: 13px;
-          padding: 18px;
+          padding: 16px 18px;
           border: 1px solid #e8edf4;
           border-radius: 13px;
           background: #fff;
           box-shadow: 0 3px 12px rgba(28, 53, 88, 0.025);
           transition: all 0.15s ease;
+          text-align: left;
+          cursor: pointer;
         }
         .report-card:hover {
           border-color: #a6c9f7;
           box-shadow: 0 6px 16px rgba(47, 128, 237, 0.1);
+        }
+        .report-card.active {
+          border-color: #2f80ed;
+          background: #f5f9ff;
+          box-shadow: 0 6px 16px rgba(47, 128, 237, 0.12);
         }
         .report-icon {
           display: grid;
@@ -98,8 +146,6 @@ export default function ReportsPage() {
           height: 38px;
           place-items: center;
           border-radius: 10px;
-          color: #2f80ed;
-          background: #edf5ff;
         }
         .report-card strong {
           display: block;
@@ -107,7 +153,7 @@ export default function ReportsPage() {
           font-size: 13px;
         }
         .report-card p {
-          margin: 6px 0 10px;
+          margin: 5px 0 9px;
           color: #8996a8;
           font-size: 11px;
           line-height: 1.5;
@@ -154,6 +200,7 @@ export default function ReportsPage() {
           font-weight: 600;
           text-align: left;
           background: #fff;
+          cursor: pointer;
         }
         .format-option.active {
           border-color: #2f80ed;
@@ -186,6 +233,7 @@ export default function ReportsPage() {
           color: #536177;
           font-size: 12px;
           font-weight: 600;
+          cursor: pointer;
         }
         .reports-generate-btn {
           display: flex;
@@ -193,37 +241,78 @@ export default function ReportsPage() {
           align-items: center;
           justify-content: center;
           gap: 8px;
-          height: 52px;
-          margin-top: 20px;
+          height: 48px;
           border-radius: 11px;
-          font-size: 14px;
+          font-size: 13px;
+        }
+        .reports-generate-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .reports-preview-card {
+          display: grid;
+          place-items: center;
+          margin-top: 16px;
+          padding: 40px 20px;
+          min-height: 220px;
+          text-align: center;
+        }
+        .reports-preview-card .placeholder {
+          color: #a3afc0;
+        }
+        .reports-preview-card .placeholder svg {
+          margin-bottom: 10px;
+          opacity: 0.6;
+        }
+        .reports-preview-card .placeholder p {
+          margin: 0;
+          font-size: 12px;
+        }
+        .reports-preview-card .success {
+          color: #2f9e6f;
+        }
+        .reports-preview-card .success svg {
+          margin-bottom: 10px;
+        }
+        .reports-preview-card .success strong {
+          display: block;
+          color: #344158;
+          font-size: 13px;
+          margin-bottom: 4px;
+        }
+        .reports-preview-card .success p {
+          margin: 0;
+          color: #96a1b1;
+          font-size: 11px;
         }
         @media (max-width: 1000px) {
           .reports-layout {
             grid-template-columns: 1fr;
           }
         }
-        @media (max-width: 620px) {
-          .reports-grid {
-            grid-template-columns: 1fr;
-          }
-        }
       `}</style>
-
       <div className="page-heading">
         <div>
           <h1>Reports</h1>
           <p>Generate and export structured clinical reports for Priya Sharma</p>
         </div>
       </div>
-
       <div className="reports-layout">
-        <div className="reports-grid">
+        <div className="reports-list">
           {reportTypes.map((report) => {
             const Icon = report.icon;
+            const isActive = report.id === selectedId;
             return (
-              <div className="report-card" key={report.title}>
-                <span className="report-icon">
+              <button
+                type="button"
+                className={`report-card ${isActive ? "active" : ""}`}
+                key={report.id}
+                onClick={() => handleSelectReport(report.id)}
+              >
+                <span
+                  className="report-icon"
+                  style={{ color: report.iconColor, background: report.iconBg }}
+                >
                   <Icon size={18} />
                 </span>
                 <div>
@@ -237,49 +326,71 @@ export default function ReportsPage() {
                     ))}
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
 
-        <aside className="settings-card reports-export-card">
-          <h2>Export Settings</h2>
-          <div className="reports-section">
-            <h4>EXPORT FORMAT</h4>
-            {formats.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={`format-option ${format === item ? "active" : ""}`}
-                onClick={() => setFormat(item)}
-              >
-                <span className={`format-radio ${format === item ? "active" : ""}`}>
-                  {format === item && <span className="format-radio-dot" />}
-                </span>
-                {item}
-              </button>
-            ))}
+        <aside>
+          <div className="settings-card reports-export-card">
+            <h2>Export Settings</h2>
+            <div className="reports-section">
+              <h4>EXPORT FORMAT</h4>
+              {formats.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={`format-option ${format === item ? "active" : ""}`}
+                  onClick={() => setFormat(item)}
+                >
+                  <span className={`format-radio ${format === item ? "active" : ""}`}>
+                    {format === item && <span className="format-radio-dot" />}
+                  </span>
+                  {item}
+                </button>
+              ))}
+            </div>
+            <div className="reports-section" style={{ marginBottom: 12 }}>
+              <h4>INCLUDE SECTIONS</h4>
+              {sectionOptions.map((item) => (
+                <label className="check-row" key={item}>
+                  <input
+                    type="checkbox"
+                    checked={sections.includes(item)}
+                    onChange={() => toggleSection(item)}
+                    style={{ accentColor: "#2f80ed" }}
+                  />
+                  <span>{item}</span>
+                </label>
+              ))}
+            </div>
+            <button
+              className="primary-action reports-generate-btn"
+              type="button"
+              onClick={handleGenerate}
+              disabled={generating}
+            >
+              <FileDown size={16} />
+              {generating ? "Generating…" : `Generate ${selectedReport.title}`}
+            </button>
           </div>
-          <div className="reports-section">
-            <h4>INCLUDE SECTIONS</h4>
-            {sectionOptions.map((item) => (
-              <label className="check-row" key={item}>
-                <input
-                  type="checkbox"
-                  checked={sections.includes(item)}
-                  onChange={() => toggleSection(item)}
-                  style={{ accentColor: "#2f80ed" }}
-                />
-                <span>{item}</span>
-              </label>
-            ))}
+
+          <div className="settings-card reports-preview-card">
+            {generated ? (
+              <div className="success">
+                <CheckCircle2 size={34} />
+                <strong>{generated.title} ready</strong>
+                <p>Exported as {generated.format} · click to download</p>
+              </div>
+            ) : (
+              <div className="placeholder">
+                <FileText size={34} />
+                <p>Select a report type and click Generate</p>
+              </div>
+            )}
           </div>
         </aside>
       </div>
-
-      <button className="primary-action reports-generate-btn" type="button">
-        <FileDown size={17} /> Generate Patient Summary PDF
-      </button>
     </>
   );
 }

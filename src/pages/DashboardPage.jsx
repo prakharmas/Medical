@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users,
@@ -11,7 +12,6 @@ import {
   AlertTriangle,
   Calendar,
 } from "lucide-react";
-
 const stats = [
   {
     icon: Users,
@@ -46,9 +46,11 @@ const stats = [
     iconBg: "#fdf1de",
   },
 ];
-
+// NOTE: added a stable "id" per patient so we can deep-link straight
+// into that patient's record instead of just the generic /patients list.
 const consultations = [
   {
+    id: "priya-sharma",
     time: "09:00 AM",
     name: "Priya Sharma",
     initials: "PS",
@@ -57,6 +59,7 @@ const consultations = [
     status: "Completed",
   },
   {
+    id: "rajesh-kumar",
     time: "10:30 AM",
     name: "Rajesh Kumar",
     initials: "RK",
@@ -65,6 +68,7 @@ const consultations = [
     status: "Completed",
   },
   {
+    id: "sunita-reddy",
     time: "12:00 PM",
     name: "Sunita Reddy",
     initials: "SR",
@@ -73,6 +77,7 @@ const consultations = [
     status: "Urgent",
   },
   {
+    id: "mohammed-aslam",
     time: "02:00 PM",
     name: "Mohammed Aslam",
     initials: "MA",
@@ -81,6 +86,7 @@ const consultations = [
     status: "Upcoming",
   },
   {
+    id: "lalita-devi",
     time: "03:30 PM",
     name: "Lalita Devi",
     initials: "LD",
@@ -89,6 +95,7 @@ const consultations = [
     status: "Upcoming",
   },
   {
+    id: "new-patient",
     time: "04:30 PM",
     name: "New Patient",
     initials: "NP",
@@ -97,15 +104,48 @@ const consultations = [
     status: "Upcoming",
   },
 ];
-
 const statusStyles = {
   Completed: "#2f9e6f",
   Urgent: "#ee4c54",
   Upcoming: "#2f80ed",
 };
-
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+
+  // Opens the OS file picker. Wired to both the header "Upload Records"
+  // button and the Quick Actions "Upload Records" row.
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  // Fires once the user actually picks file(s) from the dialog.
+  // Replace the body of this function with your real upload API call
+  // (e.g. POST to /api/records/upload with FormData).
+  const handleFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    console.log("Files selected for upload:", files);
+    // TODO: send `files` to your backend here, e.g.:
+    // const formData = new FormData();
+    // files.forEach((f) => formData.append("records", f));
+    // await fetch("/api/records/upload", { method: "POST", body: formData });
+
+    alert(`${files.length} file(s) ready to upload:\n${files.map((f) => f.name).join("\n")}`);
+
+    // reset so selecting the same file again still fires onChange
+    e.target.value = "";
+  };
+
+  // Navigates straight into a specific patient's history/detail view.
+  // Update the path below to match whatever route your app actually
+  // uses for a single patient (e.g. "/patients/:id").
+  const goToPatient = (patient) => {
+    navigate(`/patients/${patient.id}`, {
+      state: { patientId: patient.id, patientName: patient.name },
+    });
+  };
 
   const quickActions = [
     {
@@ -118,7 +158,7 @@ export default function DashboardPage() {
       icon: Upload,
       title: "Upload Records",
       subtitle: "PDF, Scans, Reports",
-      onClick: undefined,
+      onClick: handleUploadClick,
     },
     {
       icon: Mic,
@@ -133,13 +173,11 @@ export default function DashboardPage() {
       onClick: () => navigate("/ai-summary"),
     },
   ];
-
   const pendingReviews = [
-    { name: "Priya Sharma", initials: "PS", avatarClass: "purple", type: "Breast Cancer (IDC)" },
-    { name: "Rajesh Kumar", initials: "RK", avatarClass: "blue", type: "Non-Small Cell Lung Cancer" },
-    { name: "Sunita Reddy", initials: "SR", avatarClass: "orange", type: "Ovarian Cancer (HGSOC)" },
+    { id: "priya-sharma", name: "Priya Sharma", initials: "PS", avatarClass: "purple", type: "Breast Cancer (IDC)" },
+    { id: "rajesh-kumar", name: "Rajesh Kumar", initials: "RK", avatarClass: "blue", type: "Non-Small Cell Lung Cancer" },
+    { id: "sunita-reddy", name: "Sunita Reddy", initials: "SR", avatarClass: "orange", type: "Ovarian Cancer (HGSOC)" },
   ];
-
   const activity = [
     {
       icon: Sparkles,
@@ -190,7 +228,6 @@ export default function DashboardPage() {
       time: "4 hrs ago",
     },
   ];
-
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const dateLabel = new Date().toLocaleDateString("en-US", {
@@ -199,7 +236,6 @@ export default function DashboardPage() {
     month: "long",
     day: "numeric",
   });
-
   return (
     <>
       <style>{`
@@ -304,6 +340,7 @@ export default function DashboardPage() {
           border-radius: 9px;
           text-align: left;
           background: transparent;
+          cursor: pointer;
         }
         .consult-row:hover {
           background: #f7faff;
@@ -360,6 +397,7 @@ export default function DashboardPage() {
           border-radius: 9px;
           text-align: left;
           background: #fff;
+          cursor: pointer;
         }
         .quick-action-row:hover {
           border-color: #a6c9f7;
@@ -413,6 +451,7 @@ export default function DashboardPage() {
           border-radius: 9px;
           text-align: left;
           background: transparent;
+          cursor: pointer;
         }
         .review-row:hover {
           background: #f7faff;
@@ -448,6 +487,7 @@ export default function DashboardPage() {
           font-weight: 700;
           text-align: right;
           background: transparent;
+          cursor: pointer;
         }
         .activity-grid {
           display: grid;
@@ -512,13 +552,23 @@ export default function DashboardPage() {
         }
       `}</style>
 
+      {/* hidden input powering both "Upload Records" buttons */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: "none" }}
+        multiple
+        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+        onChange={handleFilesSelected}
+      />
+
       <div className="dash-greeting-row">
         <div>
           <h1>{greeting}, Dr. Krishnan</h1>
           <p>{dateLabel} · Medical Oncology · Tata Memorial Centre</p>
         </div>
         <div className="dash-greeting-actions">
-          <button className="outline-button">
+          <button className="outline-button" onClick={handleUploadClick}>
             <Upload size={14} /> Upload Records
           </button>
           <button className="primary-action" onClick={() => navigate("/voice")}>
@@ -526,7 +576,6 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
-
       <div className="stat-grid">
         {stats.map((stat) => {
           const Icon = stat.icon;
@@ -545,7 +594,6 @@ export default function DashboardPage() {
           );
         })}
       </div>
-
       <div className="dash-columns">
         <section className="dash-panel">
           <div className="panel-title">
@@ -557,9 +605,9 @@ export default function DashboardPage() {
           <div className="consult-list">
             {consultations.map((item) => (
               <button
-                key={item.time + item.name}
+                key={item.id}
                 className="consult-row"
-                onClick={() => navigate("/patients")}
+                onClick={() => goToPatient(item)}
               >
                 <span className="consult-time">{item.time}</span>
                 <span className={`patient-avatar ${item.avatarClass}`}>
@@ -580,7 +628,6 @@ export default function DashboardPage() {
             ))}
           </div>
         </section>
-
         <div>
           <section className="dash-panel">
             <div className="panel-title">
@@ -607,7 +654,6 @@ export default function DashboardPage() {
               })}
             </div>
           </section>
-
           <section className="dash-panel review-panel">
             <div className="panel-title">
               <h3>Pending AI Reviews</h3>
@@ -616,9 +662,9 @@ export default function DashboardPage() {
             <div className="review-list">
               {pendingReviews.map((item) => (
                 <button
-                  key={item.name}
+                  key={item.id}
                   className="review-row"
-                  onClick={() => navigate("/ai-summary")}
+                  onClick={() => goToPatient(item)}
                 >
                   <span className={`patient-avatar ${item.avatarClass}`}>
                     {item.initials}
@@ -637,7 +683,6 @@ export default function DashboardPage() {
           </section>
         </div>
       </div>
-
       <section className="dash-panel" style={{ marginTop: 16 }}>
         <div className="panel-title">
           <h3>Recent Activity</h3>

@@ -26,14 +26,27 @@ const monthly = [
 ];
 const maxMonthly = Math.max(...monthly.map((item) => item.value));
 
+// count + color per slice — must sum to `totalPatients` / 100%
 const cancerTypes = [
-  { label: "Breast Cancer", value: 27, color: "#2f80ed" },
-  { label: "Lung Cancer", value: 19, color: "#7554b8" },
-  { label: "Colorectal", value: 14, color: "#b56a38" },
-  { label: "Ovarian", value: 12, color: "#35846c" },
-  { label: "Cervical", value: 11, color: "#ee4c54" },
-  { label: "Others", value: 17, color: "#8290a4" },
+  { label: "Breast Cancer", count: 124, value: 27, color: "#2f80ed" },
+  { label: "Lung Cancer", count: 88, value: 19, color: "#7554b8" },
+  { label: "Colorectal", count: 64, value: 14, color: "#2f9e6f" },
+  { label: "Ovarian", count: 52, value: 11, color: "#f2994a" },
+  { label: "Cervical", count: 48, value: 11, color: "#eb5757" },
+  { label: "Others", count: 76, value: 17, color: "#98a5b6" },
 ];
+const totalPatients = cancerTypes.reduce((sum, item) => sum + item.count, 0);
+
+// build the conic-gradient stops for the donut from the % values
+function buildDonutGradient(data) {
+  let acc = 0;
+  const stops = data.map((item) => {
+    const start = acc;
+    acc += item.value;
+    return `${item.color} ${start}% ${acc}%`;
+  });
+  return `conic-gradient(${stops.join(", ")})`;
+}
 
 const heatmapWeeks = 24;
 const heatmapDays = 7;
@@ -47,6 +60,8 @@ const heatmapColors = ["#edf2f9", "#cfe2fb", "#a9cdf7", "#6fa8ef", "#2f80ed"];
 const heatmapMonths = ["Feb", "Mar", "Apr", "May", "Jun", "Jul"];
 
 export default function AnalyticsPage() {
+  const donutGradient = buildDonutGradient(cancerTypes);
+
   return (
     <>
       <style>{`
@@ -106,7 +121,6 @@ export default function AnalyticsPage() {
           background: #ffe8e9;
         }
         .analytics-section {
-          margin-top: 22px;
           padding: 22px 24px;
           border: 1px solid #e8edf4;
           border-radius: 13px;
@@ -122,6 +136,13 @@ export default function AnalyticsPage() {
           margin: 0 0 20px;
           color: #96a1b1;
           font-size: 11px;
+        }
+        .analytics-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 380px;
+          gap: 16px;
+          align-items: stretch;
+          margin-top: 22px;
         }
         .bar-chart {
           display: flex;
@@ -158,30 +179,87 @@ export default function AnalyticsPage() {
           font-size: 11px;
           font-weight: 650;
         }
-        .cancer-list {
-          display: grid;
-          gap: 15px;
-        }
-        .cancer-row-top {
+        .cancer-panel-body {
           display: flex;
-          justify-content: space-between;
-          margin-bottom: 6px;
-          color: #47556b;
-          font-size: 12px;
-          font-weight: 650;
+          align-items: center;
+          gap: 22px;
         }
-        .cancer-row-top b {
+        .donut-wrap {
+          position: relative;
+          flex: 0 0 auto;
+          width: 140px;
+          height: 140px;
+        }
+        .donut-ring {
+          width: 140px;
+          height: 140px;
+          border-radius: 50%;
+        }
+        .donut-center {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          display: grid;
+          width: 92px;
+          height: 92px;
+          transform: translate(-50%, -50%);
+          border-radius: 50%;
+          background: #fff;
+          place-items: center;
+          text-align: center;
+          box-shadow: inset 0 0 0 1px #edf1f6;
+        }
+        .donut-center strong {
+          display: block;
           color: #172338;
+          font-size: 20px;
+          letter-spacing: -0.4px;
         }
-        .cancer-track {
-          height: 8px;
+        .donut-center span {
+          display: block;
+          margin-top: 2px;
+          color: #96a1b1;
+          font-size: 9px;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+        .cancer-legend {
+          flex: 1;
+          min-width: 0;
+          display: grid;
+          gap: 10px;
+        }
+        .cancer-legend-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          color: #47556b;
+        }
+        .cancer-dot {
+          width: 9px;
+          height: 9px;
+          flex: 0 0 auto;
+          border-radius: 50%;
+        }
+        .cancer-legend-label {
+          flex: 1;
+          min-width: 0;
           overflow: hidden;
-          border-radius: 5px;
-          background: #edf1f6;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
-        .cancer-fill {
-          height: 100%;
-          border-radius: inherit;
+        .cancer-legend-count {
+          color: #172338;
+          font-weight: 700;
+          font-size: 12px;
+        }
+        .cancer-legend-pct {
+          width: 30px;
+          text-align: right;
+          color: #96a1b1;
+          font-size: 10px;
+          font-weight: 650;
         }
         .heatmap-months {
           display: flex;
@@ -223,6 +301,11 @@ export default function AnalyticsPage() {
             grid-template-columns: repeat(3, 1fr);
           }
         }
+        @media (max-width: 1000px) {
+          .analytics-row {
+            grid-template-columns: 1fr;
+          }
+        }
         @media (max-width: 700px) {
           .kpi-grid {
             grid-template-columns: repeat(2, 1fr);
@@ -230,9 +313,11 @@ export default function AnalyticsPage() {
           .bar-column {
             width: 34px;
           }
+          .cancer-panel-body {
+            flex-direction: column;
+          }
         }
       `}</style>
-
       <div className="page-heading">
         <div>
           <p className="eyebrow">PERFORMANCE OVERVIEW</p>
@@ -261,45 +346,53 @@ export default function AnalyticsPage() {
         })}
       </div>
 
-      <section className="analytics-section">
-        <h2>Monthly Overview</h2>
-        <p>Patients processed per month, Feb – Jul</p>
-        <div className="bar-chart">
-          {monthly.map((item) => (
-            <div className="bar-column" key={item.month}>
-              <span className="bar-value">{item.value}</span>
-              <div
-                className="bar-fill"
-                style={{ height: `${(item.value / maxMonthly) * 100}%` }}
-              />
-              <span className="bar-label">{item.month}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="analytics-section">
-        <h2>Top Cancer Types</h2>
-        <p>Share of active patients by diagnosis</p>
-        <div className="cancer-list">
-          {cancerTypes.map((item) => (
-            <div key={item.label}>
-              <div className="cancer-row-top">
-                <span>{item.label}</span>
-                <b>{item.value}%</b>
-              </div>
-              <div className="cancer-track">
+      <div className="analytics-row">
+        <section className="analytics-section">
+          <h2>Monthly Overview</h2>
+          <p>Patients processed per month, Feb – Jul</p>
+          <div className="bar-chart">
+            {monthly.map((item) => (
+              <div className="bar-column" key={item.month}>
+                <span className="bar-value">{item.value}</span>
                 <div
-                  className="cancer-fill"
-                  style={{ width: `${item.value}%`, background: item.color }}
+                  className="bar-fill"
+                  style={{ height: `${(item.value / maxMonthly) * 100}%` }}
                 />
+                <span className="bar-label">{item.month}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="analytics-section">
+          <h2>Top Cancer Types</h2>
+          <p>Share of active patients by diagnosis</p>
+          <div className="cancer-panel-body">
+            <div className="donut-wrap">
+              <div
+                className="donut-ring"
+                style={{ background: donutGradient }}
+              />
+              <div className="donut-center">
+                <strong>{totalPatients}</strong>
+                <span>Patients</span>
               </div>
             </div>
-          ))}
-        </div>
-      </section>
+            <div className="cancer-legend">
+              {cancerTypes.map((item) => (
+                <div className="cancer-legend-row" key={item.label}>
+                  <span className="cancer-dot" style={{ background: item.color }} />
+                  <span className="cancer-legend-label">{item.label}</span>
+                  <span className="cancer-legend-count">{item.count}</span>
+                  <span className="cancer-legend-pct">{item.value}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
 
-      <section className="analytics-section">
+      <section className="analytics-section" style={{ marginTop: 16 }}>
         <h2>Monthly Usage Heatmap</h2>
         <p>Daily platform activity, Feb – Jul</p>
         <div className="heatmap-months">
