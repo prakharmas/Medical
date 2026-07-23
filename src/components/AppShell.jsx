@@ -1,16 +1,30 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Users,
+  Mic,
+  Sparkles,
+  FileText,
+  BarChart3,
+  Settings as SettingsIcon,
+  ShieldCheck,
+} from "lucide-react";
 
 const navItems = [
-  { id: "patients", path: "/patients", label: "Patients", icon: "?" },
-  // {
-  //   id: "summary",
-  //   path: "/ai-summary",
-  //   label: "AI Summary",
-  //   icon: "?",
-  //   badge: "5",
-  // },
-  // { id: "settings", path: "/settings", label: "Settings", icon: "?" },
-  // { id: "admin", label: "Admin", icon: "?" },
+  { id: "dashboard", path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "patients", path: "/patients", label: "Patients", icon: Users },
+  { id: "voice", path: "/voice", label: "Voice", icon: Mic },
+  {
+    id: "summary",
+    path: "/ai-summary",
+    label: "AI Summary",
+    icon: Sparkles,
+    badge: "5",
+  },
+  { id: "reports", path: "/reports", label: "Reports", icon: FileText },
+  { id: "analytics", path: "/analytics", label: "Analytics", icon: BarChart3 },
+  { id: "settings", path: "/settings", label: "Settings", icon: SettingsIcon },
+  { id: "admin", label: "Admin", icon: ShieldCheck },
 ];
 
 export default function AppShell() {
@@ -27,17 +41,23 @@ export default function AppShell() {
           </div>
         </div>
         <nav className="side-nav" aria-label="Main navigation">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              className={`nav-item ${location.pathname === item.path ? "active" : ""}`}
-              onClick={() => item.path && navigate(item.path)}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-              {item.badge && <b className="nav-badge">{item.badge}</b>}
-            </button>
-          ))}
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = !!item.path && location.pathname === item.path;
+            return (
+              <button
+                key={item.id}
+                className={`nav-item ${isActive ? "active" : ""}`}
+                onClick={() => item.path && navigate(item.path)}
+              >
+                <span className="nav-icon">
+                  <Icon size={17} strokeWidth={2} />
+                </span>
+                {item.label}
+                {item.badge && <b className="nav-badge">{item.badge}</b>}
+              </button>
+            );
+          })}
         </nav>
         <div className="sidebar-bottom">
           <div className="signed-user">
