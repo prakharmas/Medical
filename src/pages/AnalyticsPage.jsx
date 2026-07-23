@@ -1,4 +1,12 @@
-import { Users, Clock, Timer, Mic, FileUp, TrendingUp, TrendingDown } from "lucide-react";
+import {
+  Users,
+  Clock,
+  Timer,
+  Mic,
+  FileUp,
+  TrendingUp,
+  TrendingDown,
+} from "lucide-react";
 
 const kpis = [
   { label: "Patients Processed", value: "312", delta: "+12%", icon: Users },
@@ -30,7 +38,10 @@ const cancerTypes = [
 const heatmapWeeks = 24;
 const heatmapDays = 7;
 const heatmapData = Array.from({ length: heatmapWeeks }, (_, w) =>
-  Array.from({ length: heatmapDays }, (_, d) => (w * 3 + d * 5 + (w % 4) * 2) % 5)
+  Array.from(
+    { length: heatmapDays },
+    (_, d) => (w * 3 + d * 5 + (w % 4) * 2) % 5,
+  ),
 );
 const heatmapColors = ["#edf2f9", "#cfe2fb", "#a9cdf7", "#6fa8ef", "#2f80ed"];
 const heatmapMonths = ["Feb", "Mar", "Apr", "May", "Jun", "Jul"];
@@ -304,13 +315,17 @@ export default function AnalyticsPage() {
                 className="heatmap-cell"
                 style={{ background: heatmapColors[level] }}
               />
-            ))
+            )),
           )}
         </div>
         <div className="heatmap-legend">
           Less
           {heatmapColors.map((color) => (
-            <span key={color} className="heatmap-cell" style={{ background: color }} />
+            <span
+              key={color}
+              className="heatmap-cell"
+              style={{ background: color }}
+            />
           ))}
           More
         </div>

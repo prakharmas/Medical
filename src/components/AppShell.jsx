@@ -1,4 +1,4 @@
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+﻿import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
@@ -8,23 +8,22 @@ import {
   BarChart3,
   Settings as SettingsIcon,
   ShieldCheck,
+  Search,
+  Plus,
+  Bell,
+  LogOut,
+  Sparkles as BrandIcon,
 } from "lucide-react";
 
 const navItems = [
   { id: "dashboard", path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "patients", path: "/patients", label: "Patients", icon: Users },
   { id: "voice", path: "/voice", label: "Voice", icon: Mic },
-  {
-    id: "summary",
-    path: "/ai-summary",
-    label: "AI Summary",
-    icon: Sparkles,
-    badge: "5",
-  },
+  { id: "summary", path: "/ai-summary", label: "AI Summary", icon: Sparkles, badge: "5" },
   { id: "reports", path: "/reports", label: "Reports", icon: FileText },
   { id: "analytics", path: "/analytics", label: "Analytics", icon: BarChart3 },
   { id: "settings", path: "/settings", label: "Settings", icon: SettingsIcon },
-  { id: "admin", label: "Admin", icon: ShieldCheck },
+  { id: "admin", path: "/admin", label: "Admin", icon: ShieldCheck },
 ];
 
 export default function AppShell() {
@@ -34,16 +33,22 @@ export default function AppShell() {
     <div className="app-shell reference-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="brand-symbol">?</span>
+          <span className="brand-symbol">
+            <BrandIcon size={15} strokeWidth={2} className="text-white" />
+          </span>
           <div>
-            <span>CliniQ</span>
+            <span>ClinIQ</span>
             <small>CLINICAL AI</small>
           </div>
         </div>
         <nav className="side-nav" aria-label="Main navigation">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = !!item.path && location.pathname === item.path;
+            const isActive =
+              item.path === "/patients"
+                ? location.pathname.startsWith("/patients") ||
+                  location.pathname === "/"
+                : location.pathname === item.path;
             return (
               <button
                 key={item.id}
@@ -68,22 +73,25 @@ export default function AppShell() {
             </div>
           </div>
           <button className="signout-link" onClick={() => navigate("/")}>
-            ? <span>Sign out</span>
+            <LogOut size={15} strokeWidth={2} />
+            <span>Sign out</span>
           </button>
         </div>
       </aside>
       <section className="workspace">
         <header className="topbar">
           <div className="global-search">
-            <span>?</span>
-            <input placeholder="Search patient by name, UHID, MRN�" />
+            <Search size={15} strokeWidth={2} />
+            <input placeholder="Search patient by name, UHID, MRN..." />
           </div>
           <div className="topbar-actions">
             <button className="upload-button">
-              + <span>Upload Records</span>
+              <Plus size={14} strokeWidth={2} />
+              <span>Upload Records</span>
             </button>
             <button className="icon-button" aria-label="Notifications">
-              ?<i />
+              <Bell size={18} strokeWidth={2} />
+              <i />
             </button>
             <button className="doctor-avatar profile-avatar">AK</button>
           </div>

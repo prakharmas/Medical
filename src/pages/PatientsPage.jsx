@@ -1,4 +1,5 @@
 ﻿import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const patients = [
   {
@@ -64,6 +65,7 @@ const patients = [
 ];
 
 export default function PatientsPage() {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState("");
@@ -71,7 +73,7 @@ export default function PatientsPage() {
   const visible = patients.filter((patient) =>
     `${patient.name} ${patient.uhid} ${patient.mrn} ${patient.diagnosis}`
       .toLowerCase()
-      .includes(search.toLowerCase())
+      .includes(search.toLowerCase()),
   );
 
   return (
@@ -110,7 +112,10 @@ export default function PatientsPage() {
           <button
             key={patient.uhid}
             className={`reference-patient-card ${selectedPatient === patient.name ? "chosen" : ""}`}
-            onClick={() => setSelectedPatient(patient.name)}
+            onClick={() => {
+              setSelectedPatient(patient.name);
+              navigate(`/patients/${patient.uhid}`);
+            }}
           >
             <span className="reference-avatar">{patient.initials}</span>
 
