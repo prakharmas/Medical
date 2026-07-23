@@ -3459,3 +3459,86 @@ button {
     display: none;
   }
 }
+.brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.login-brand strong {
+  display: block;
+  font-size: 30px;
+  color: white;
+}
+
+.login-brand small {
+  display: block;
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 2px;
+  font-size: 12px;
+}
+
+.login-chips {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 32px;
+}
+
+.login-chips b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  font-weight: 500;
+}
+
+.login-options button,
+.sso-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.azure-icon,
+.google-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.azure-icon {
+  background: #2563eb;
+  color: white;
+}
+
+.google-icon {
+  background: #ea4335;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sso-button svg {
+  stroke-width: 2.2;
+}

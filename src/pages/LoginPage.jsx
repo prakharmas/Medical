@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Sparkles, Zap, Mic, ShieldCheck, Building2 } from "lucide-react";
 
 export default function LoginPage({ onLogin }) {
   const [mode, setMode] = useState("sso");
@@ -11,7 +12,9 @@ export default function LoginPage({ onLogin }) {
     <div className="login-page">
       <section className="login-visual">
         <div className="login-brand">
-          <span>?</span>
+          <span className="brand-icon">
+            <Sparkles size={18} strokeWidth={2.5} />
+          </span>
           <div>
             <strong>CliniQ</strong>
             <small>CLINICAL AI PLATFORM</small>
@@ -30,9 +33,20 @@ export default function LoginPage({ onLogin }) {
             oncologists.
           </span>
           <div className="login-chips">
-            <b>? AI-generated SOAP notes</b>
-            <b>? Voice-to-clinical text</b>
-            <b>? HIPAA compliant</b>
+            <b>
+              <Zap size={15} />
+              AI-generated SOAP notes
+            </b>
+
+            <b>
+              <Mic size={15} />
+              Voice-to-clinical text
+            </b>
+
+            <b>
+              <ShieldCheck size={15} />
+              HIPAA compliant
+            </b>
           </div>
         </div>
         <div className="hospital-trust">
@@ -76,7 +90,7 @@ export default function LoginPage({ onLogin }) {
                 onClick={signIn}
                 disabled={loading}
               >
-                {loading ? "Signing in�" : "?  Hospital SSO Login"}
+                {loading ? "Signing in" : "  Hospital SSO Login"}
               </button>
             </div>
           ) : (
@@ -104,12 +118,12 @@ export default function LoginPage({ onLogin }) {
                 />
               </label>
               <button className="sso-button" disabled={loading}>
-                {loading ? "Signing in�" : "Sign in"}
+                {loading ? "Signing in" : "Sign in"}
               </button>
             </form>
           )}
           <small className="login-compliance">
-            HIPAA compliant � SOC 2 Type II � ISO 27001 certified
+            HIPAA compliant . SOC 2 Type II . ISO 27001 certified
           </small>
         </section>
       </main>
