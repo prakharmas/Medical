@@ -1,12 +1,30 @@
 import { useState } from "react";
 import { Sparkles, Zap, Mic, ShieldCheck, Building2 } from "lucide-react";
+import { login } from "../api/api";
 
 export default function LoginPage({ onLogin }) {
   const [mode, setMode] = useState("sso");
   const [loading, setLoading] = useState(false);
-  const signIn = () => {
+  const [error, setError] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const signIn = async () => {
     setLoading(true);
-    setTimeout(onLogin, 450);
+    setError("");
+    try {
+      const response = await login(email, password, "doctor");
+      if (response.data.success) {
+        localStorage.setItem("access_token", response.data.token);
+        onLogin();
+      } else {
+        setError("Login failed. Please check your credentials.");
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "Login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
   return (
     <div className="login-page">
@@ -29,7 +47,7 @@ export default function LoginPage({ onLogin }) {
           </h1>
           <span>
             CliniQ structures messy patient documents, generates clinical
-            summaries, and lets you dictate notes � all powered by AI built for
+            summaries, and lets you dictate notes — all powered by AI built for
             oncologists.
           </span>
           <div className="login-chips">
@@ -102,10 +120,12 @@ export default function LoginPage({ onLogin }) {
               }}
             >
               <label>
-                Email address
+                Username
                 <input
-                  type="email"
-                  placeholder="doctor@hospital.com"
+                  type="text"
+                  placeholder="Enter your username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </label>
@@ -114,10 +134,13 @@ export default function LoginPage({ onLogin }) {
                 <input
                   type="password"
                   placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                 />
               </label>
-              <button className="sso-button" disabled={loading}>
+              {error && <p className="login-error">{error}</p>}
+              <button className="sso-button" type="submit" disabled={loading}>
                 {loading ? "Signing in" : "Sign in"}
               </button>
             </form>

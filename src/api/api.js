@@ -1,0 +1,76 @@
+import axios from "axios";
+
+const baseURL = import.meta.env.VITE_API_URL || "http://172.12.10.37:9000";
+
+const api = axios.create({
+  baseURL,
+  headers: { "Content-Type": "application/json" },
+});
+
+function clearAuthAndRedirect() {
+  localStorage.removeItem("access_token");
+  if (!window.location.pathname.startsWith("/")) {
+    window.location.href = "/";
+  }
+}
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err.response?.status;
+    if (status === 401 || status === 403) {
+      clearAuthAndRedirect();
+    }
+    return Promise.reject(err);
+  }
+);
+
+export default api;
+
+export const login = (username, password, role) =>
+  api.post("/login", { username, password, role });
+
+export const getMe = () => api.get("/auth/me");
+
+export const getPatients = () => api.get("/patients");
+export const createPatient = (data) => api.post("/create-patient", data);
+export const listPatientsDetailed = () => api.post("/list-patients-detailed");
+
+export const getSummaries = () => api.get("/summaries");
+export const generateSummary = (data) => api.post("/summaries/generate", data);
+
+export const transcribeAudio = (formData) =>
+  api.post("/voice/transcribe", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+export const uploadRecords = (formData) =>
+  api.post("/uploads/records", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+export const createMedicalDocument = (data) =>
+  api.post("/create-medical-document", data);
+
+export const uploadMedicalDocument = (formData) =>
+  api.post("/upload-medical-document", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+export const listMedicalDocuments = (patientUid) =>
+  api.post("/list-medical-documents", { patient_uid: patientUid });
+
+export const generateMedicalSummary = (data) =>
+  api.post("/generate-medical-summary", data);
+
+export const getReports = () => api.get("/reports");
+
+export const getAnalytics = () => api.get("/analytics/dashboard");

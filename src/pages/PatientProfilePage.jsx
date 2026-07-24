@@ -1,5 +1,10 @@
-﻿import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+﻿import { useState, useRef, useEffect } from "react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import {
+  createMedicalDocument,
+  uploadMedicalDocument,
+  listMedicalDocuments,
+} from "../api/api";
 
 const timeline = [
   {
@@ -85,123 +90,173 @@ const timeline = [
   },
 ];
 
-const documents = [
-  {
-    name: "Histopathology Report — Jan 2023",
-    type: "Histopathology",
-    date: "2023-01-22",
-    size: "2.4 MB",
-    confidence: "97%",
-    tone: "violet",
-    status: "ready",
-  },
-  {
-    name: "PET-CT Staging Scan",
-    type: "PET Scan",
-    date: "2023-02-10",
-    size: "18.2 MB",
-    confidence: "94%",
-    tone: "cyan",
-    status: "ready",
-  },
-  {
-    name: "Cycle 6 Discharge Summary",
-    type: "Discharge Summary",
-    date: "2023-08-15",
-    size: "1.1 MB",
-    confidence: "99%",
-    tone: "blue",
-    status: "ready",
-  },
-  {
-    name: "Operation Notes — MRM",
-    type: "Surgical Notes",
-    date: "2023-09-20",
-    size: "0.8 MB",
-    confidence: "96%",
-    tone: "red",
-    status: "ready",
-  },
-  {
-    name: "Final Pathology — pCR",
-    type: "Histopathology",
-    date: "2023-09-28",
-    size: "3.2 MB",
-    confidence: "98%",
-    tone: "violet",
-    status: "ready",
-  },
-  {
-    name: "Blood Reports — July 2024",
-    type: "Lab Report",
-    date: "2024-07-18",
-    size: "0.5 MB",
-    confidence: "100%",
-    tone: "green",
-    status: "ready",
-  },
-  {
-    name: "MRI Breast — July 2024",
-    type: "MRI",
-    date: "2024-07-15",
-    size: "22.4 MB",
-    confidence: "85%",
-    tone: "orange",
-    status: "processing",
-  },
-];
+const toneMap = {
+  "application/pdf": "violet",
+  "image/jpeg": "cyan",
+  "image/png": "green",
+  "application/msword": "blue",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "blue",
+};
 
 export default function PatientProfilePage() {
   const navigate = useNavigate();
   const { patientId } = useParams();
+  const { state } = useLocation();
+  const patient = state?.patient || null;
   const [tab, setTab] = useState("timeline");
   const [openEvent, setOpenEvent] = useState(null);
   const [note, setNote] = useState(
     "Patient is tolerating T-DM1 well. Mild grade 1 peripheral neuropathy in bilateral lower limbs — started Duloxetine 30mg OD. Monitor at next cycle. Continue T-DM1 as planned.",
   );
   const [saved, setSaved] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, [patientId]);
+
+  const fetchDocuments = async () => {
+    try {
+      const res = await listMedicalDocuments(patientId);
+      if (res.data.documents?.length) {
+        setDocuments(
+          res.data.documents.map((doc) => ({
+            uid: doc.uid,
+            name: doc.filename,
+            type: doc.mimetype?.split("/").pop()?.toUpperCase() || "Document",
+            date: "—",
+            size: doc.num_pages ? `${doc.num_pages} pages` : "—",
+            confidence: "—",
+            tone: toneMap[doc.mimetype] || "slate",
+            status: doc.upload_finished ? "ready" : "processing",
+          }))
+        );
+      } else {
+        setDocuments([]);
+      }
+    } catch (err) {
+      setDocuments([]);
+    }
+  };
+
   const saveNote = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   };
 
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    setUploading(true);
+    let uploaded = 0;
+    let failed = 0;
+
+    for (const file of files) {
+      try {
+        const createRes = await createMedicalDocument({
+          patient_uid: patientId,
+          filename: file.name,
+          preset_uid: null,
+        });
+
+         if (createRes.data.success) {
+          const docUid = createRes.data.uid;
+          const formData = new FormData();
+          formData.append("medical_document_uid", docUid);
+          formData.append("file", file);
+
+          const uploadRes = await uploadMedicalDocument(formData);
+          if (uploadRes.data.success) {
+            uploaded++;
+          } else {
+            failed++;
+          }
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    if (uploaded > 0) fetchDocuments();
+    alert(
+      failed === 0
+        ? `${uploaded} file(s) uploaded successfully!`
+        : `${uploaded} uploaded, ${failed} failed.`
+    );
+    setUploading(false);
+    e.target.value = "";
+  };
+
+  const genderSuffix = patient?.gender === "male" ? "M" : patient?.gender === "female" ? "F" : "";
+  const patientInitials = patient?.name
+    ? patient.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+    : "??";
+  let ageStr = "—";
+  if (patient?.dob) {
+    const birth = new Date(patient.dob * 1000);
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    const m = now.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+    ageStr = `${age}${genderSuffix}`;
+  }
+
   return (
     <div className="patient-profile-page">
       <header className="profile-header">
         <div className="profile-overview">
-          <span className="profile-initials">PS</span>
+          <span className="profile-initials">{patientInitials}</span>
           <div>
             <div className="profile-name">
-              <h1>Priya Sharma</h1>
-              <span>48F</span>
+              <h1>{patient?.name || "Unknown Patient"}</h1>
+              <span>{ageStr}</span>
               <b>Active</b>
             </div>
             <div className="profile-facts">
               <span>
-                Cancer Type: <strong>Breast Cancer (IDC)</strong>
+                Cancer Type: <strong>{patient?.primary_condition?.diagnosis || "—"}</strong>
               </span>
               <span>
-                Stage: <strong>Stage IIIB</strong>
+                Stage: <strong>{patient?.primary_condition?.stage_or_severity || "—"}</strong>
               </span>
               <span>
                 UHID: <strong>{patientId}</strong>
               </span>
               <span>
-                MRN: <strong>MRN-88234</strong>
+                MRN: <strong>—</strong>
               </span>
             </div>
             <p>
-              Physician: <strong>Dr. Ananya Krishnan</strong>
+              Physician: <strong>{patient?.doctor_name || "—"}</strong>
             </p>
           </div>
         </div>
         <div className="profile-actions">
-          <button>☁ Upload</button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+            multiple
+            onChange={handleFileSelected}
+          />
+          <button onClick={handleUploadClick} disabled={uploading}>
+            {uploading ? "☁ Uploading..." : "☁ Upload"}
+          </button>
           <button>♩ Voice</button>
           <button>☁ Export</button>
           <button
             className="profile-ai"
-            onClick={() => navigate("/ai-summary")}
+            onClick={() => navigate("/ai-summary", { state: { patientId } })}
           >
             ✦ AI Summary
           </button>
@@ -303,8 +358,8 @@ export default function PatientProfilePage() {
       {tab === "documents" && (
         <section className="patient-documents">
           {documents.map(
-            ({ name, type, date, size, confidence, tone, status }) => (
-              <article className="document-record" key={name}>
+            ({ uid, name, type, date, size, confidence, tone, status }) => (
+              <article className="document-record" key={uid || name}>
                 <span className={`document-record-icon ${tone}`}>▧</span>
                 <div className="document-record-info">
                   <strong>{name}</strong>
