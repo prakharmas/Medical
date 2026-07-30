@@ -554,14 +554,14 @@ export default function AiSummaryPage() {
                 style={{ width: totalSections ? `${(reviewedCount / totalSections) * 100}%` : "0%" }}
               />
             </div>
-            <button className="ai-export-btn">
+            {/* <button className="ai-export-btn">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="8,17 12,21 16,17" />
                 <line x1="12" y1="12" x2="12" y2="21" />
                 <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
               </svg>
               Export
-            </button>
+            </button> */}
           </div>
         </div>
 
@@ -705,7 +705,7 @@ export default function AiSummaryPage() {
             </>
           )}
 
-          <div className="ai-review-stats">
+          {/* <div className="ai-review-stats">
             <div className="ai-stats-label">Review Progress</div>
             <div className="ai-stat-row">
               <span>Accepted</span>
@@ -739,7 +739,7 @@ export default function AiSummaryPage() {
               <span>🖨️</span>
               <span className="ai-export-card-text">Print Summary</span>
             </button>
-          </div>
+          </div> */}
 
           {dataHealth.issues?.length > 0 && (
             <div className="ai-flag-card">
