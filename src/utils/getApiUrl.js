@@ -24,12 +24,13 @@ export default function getApiUrl() {
     }
   }
 
-  // 2. Derive from window hostname (works when testing on any machine)
+  // 2. Use VITE_API_URL from .env if set
+  if (envUrl) return envUrl;
+
+  // 3. Derive from window hostname (useful when testing on any machine)
   if (typeof window !== "undefined") {
-    const port = envUrl ? getPortFromUrl(envUrl) : String(DEFAULT_PORT);
-    return `http://${window.location.hostname}:${port}`;
+    return `http://${window.location.hostname}:${DEFAULT_PORT}`;
   }
 
-  // 3. Fallback to env var or hardcoded default
-  return envUrl || `http://localhost:${DEFAULT_PORT}`;
+  return `http://localhost:${DEFAULT_PORT}`;
 }
