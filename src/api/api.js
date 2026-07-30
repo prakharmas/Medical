@@ -73,4 +73,21 @@ export const generateMedicalSummary = (data) =>
 
 export const getReports = () => api.get("/reports");
 
+export const generateSummaryReport = (data) =>
+  api.post("/generate-summary-report", data);
+
+export const getSummaryReportArtifact = (data) =>
+  api.post("/get-summary-report-artifact", data, { responseType: "blob" });
+
 export const getAnalytics = () => api.get("/analytics/dashboard");
+
+export const getDashboard = () => api.post("/dashboard");
+
+export const getUserInfo = () => api.post("/get-user-info");
+
+export const createUser = (data) => api.post("/create-user", data);
+export const listUsersDetailed = () => api.post("/list-users-detailed");
+export const editUser = (data) => api.post("/edit-user-route", data);
+export const listEventsDetailed = (data) => api.post("/list-events-detailed", data);
+export const editEvent = (data) => api.post("/edit-event", data);
+export const checkUnreadEvents = () => api.post("/check-unread-events");

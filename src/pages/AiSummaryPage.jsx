@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { generateMedicalSummary } from "../api/api";
+import { generateMedicalSummary, generateSummaryReport, getUserInfo, listMedicalDocuments, listPatientsDetailed } from "../api/api";
+import BiomarkerChart from "../components/BiomarkerChart";
 
 function fmtDate(ts) {
   if (!ts) return "";
@@ -29,71 +30,6 @@ function formatMedications(items) {
     .join("\n");
 }
 
-const CHART_COLORS = ["#2f80ed", "#e74c3c", "#27ae60", "#f39c12", "#8e44ad", "#1abc9c", "#e67e22", "#34495e"];
-
-function BiomarkerChart({ biomarkers }) {
-  if (!biomarkers?.length) return null;
-
-  const W = 520, H = 220, PAD = { t: 30, r: 20, b: 50, l: 55 };
-  const plotW = W - PAD.l - PAD.r;
-  const plotH = H - PAD.t - PAD.b;
-
-  const allPoints = biomarkers.flatMap((b) => b.points || []);
-  if (!allPoints.length) return null;
-
-  const dates = allPoints.map((p) => p.date).sort((a, b) => a - b);
-  const values = allPoints.map((p) => p.value);
-  const minDate = dates[0], maxDate = dates[dates.length - 1];
-  const minVal = Math.min(...values), maxVal = Math.max(...values);
-  const valPad = (maxVal - minVal) * 0.1 || 0.1;
-  const yMin = Math.max(0, minVal - valPad);
-  const yMax = maxVal + valPad;
-
-  const x = (ts) => PAD.l + ((ts - minDate) / (maxDate - minDate || 1)) * plotW;
-  const y = (v) => PAD.t + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
-
-  const tickCount = 5;
-  const yTicks = Array.from({ length: tickCount }, (_, i) => yMin + (i / (tickCount - 1)) * (yMax - yMin));
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxHeight: 260 }}>
-      {yTicks.map((val, i) => (
-        <g key={i}>
-          <line x1={PAD.l} y1={y(val)} x2={W - PAD.r} y2={y(val)} stroke="#e5e7eb" strokeWidth="0.5" />
-          <text x={PAD.l - 6} y={y(val) + 3} textAnchor="end" fontSize="9" fill="#9ca3af">
-            {val.toFixed(2)}
-          </text>
-        </g>
-      ))}
-      {biomarkers.map((b, bi) => {
-        const sorted = [...(b.points || [])].sort((a, c) => a.date - c.date);
-        const color = CHART_COLORS[bi % CHART_COLORS.length];
-        const pathD = sorted.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.date)},${y(p.value)}`).join(" ");
-        return (
-          <g key={bi}>
-            <path d={pathD} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />
-            {sorted.map((p, pi) => (
-              <circle key={pi} cx={x(p.date)} cy={y(p.value)} r="2.5" fill={color} />
-            ))}
-          </g>
-        );
-      })}
-      {biomarkers.map((b, bi) => {
-        const color = CHART_COLORS[bi % CHART_COLORS.length];
-        const lx = PAD.l + bi * 110;
-        if (lx + 80 > W) return null;
-        return (
-          <g key={`leg-${bi}`} transform={`translate(${lx}, ${H - 14})`}>
-            <rect x="0" y="-4" width="8" height="8" rx="1" fill={color} />
-            <text x="12" y="3" fontSize="8" fill="#6b7280">
-              {b.name} ({b.unit})
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
 
 function fmtDuration(val) {
   if (!val) return "";
@@ -253,44 +189,159 @@ function buildSections(summary) {
   return sections;
 }
 
+const POLL_INTERVAL = 10000;
+
+const STEP_LABELS = {
+  processing_documents: "Processing documents",
+  starting_plaintext: "Extracting text from documents",
+  chunking: "Chunking content",
+  embedding: "Generating embeddings",
+  retrieval: "Retrieving relevant context",
+  generating: "Generating AI summary",
+  complete: "Summary complete",
+};
+
+function formatStepName(tag) {
+  return STEP_LABELS[tag] || tag?.replace(/_/g, " ") || "Working…";
+}
 export default function AiSummaryPage() {
   const { state } = useLocation();
-  const patientId = state?.patientId;
+  const [resolvedId, setResolvedId] = useState(state?.patientId || null);
 
   const [sections, setSections] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [dataHealth, setDataHealth] = useState({ issues: [], confidence: "low" });
+  const [overallRelevance, setOverallRelevance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [accepted, setAccepted] = useState(new Set());
   const [expanded, setExpanded] = useState(null);
   const [aiOpen, setAiOpen] = useState(false);
+  const [progressSteps, setProgressSteps] = useState([]);
+  const [polling, setPolling] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const [patientsList, setPatientsList] = useState([]);
+  const [selectingPatient, setSelectingPatient] = useState(!state?.patientId);
+  const [attemptUid, setAttemptUid] = useState("");
+  const [userRole, setUserRole] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState("");
+  const [reportError, setReportError] = useState("");
 
   useEffect(() => {
-    if (!patientId) {
-      setLoading(false);
-      setError("No patient selected. Please navigate from a patient profile.");
-      return;
-    }
+    if (resolvedId) return;
 
-    const fetchSummary = async () => {
+    listPatientsDetailed()
+      .then((res) => {
+        const patients = res.data.patients || res.data || [];
+        setPatientsList(patients);
+        setLoading(false);
+      })
+      .catch(() => {
+        setLoading(false);
+        setError("Failed to load patients.");
+      });
+  }, [resolvedId]);
+
+  useEffect(() => {
+    if (!resolvedId) return;
+
+    let cancelled = false;
+    let timer = null;
+
+    const fetchAndPoll = async () => {
+      setLoading(true);
+      setPolling(true);
+      setProgressSteps([]);
+      setError("");
+
       try {
-        const res = await generateMedicalSummary({ patient_uid: patientId });
-        if (res.data.success && res.data.summary) {
-          const built = buildSections(res.data.summary);
-          setSections(built);
-          setDataHealth(res.data.summary.data_health || { issues: [], confidence: "low" });
-          if (built.length > 0) setExpanded(built[0].title);
-        } else {
-          setError("Failed to generate summary.");
+        const docsRes = await listMedicalDocuments(resolvedId);
+        if (!cancelled && docsRes.data.documents?.length) {
+          setDocuments(docsRes.data.documents);
         }
-      } catch {
-        setError("Failed to generate summary. Please try again.");
-      }
-      setLoading(false);
+      } catch { /* non-critical */ }
+
+      const poll = async () => {
+        if (cancelled) return;
+        try {
+          const res = await generateMedicalSummary({ patient_uid: resolvedId });
+          if (cancelled) return;
+
+          const data = res.data;
+
+          if (data.progress?.steps?.length) {
+            setProgressSteps(data.progress.steps);
+            const missing = data.progress.steps.some((s) => s.tag === "documents_missing");
+            if (missing) {
+              setError("No documents found for this patient. Please upload documents first.");
+              setPolling(false);
+              setLoading(false);
+              return;
+            }
+          }
+
+          if (data.summary) {
+            const built = buildSections(data.summary);
+            setSections(built);
+            setDataHealth(data.summary.data_health || { issues: [], confidence: "low" });
+            setOverallRelevance(data.summary.overall_relevance ?? 0);
+            if (data.attempt_uid) setAttemptUid(data.attempt_uid);
+            if (built.length > 0) setExpanded(built[0].title);
+            setPolling(false);
+            setLoading(false);
+            return;
+          }
+
+          timer = setTimeout(poll, POLL_INTERVAL);
+        } catch {
+          if (!cancelled) {
+            setError("Failed to generate summary. Please try again.");
+            setPolling(false);
+            setLoading(false);
+          }
+        }
+      };
+
+      poll();
     };
 
-    fetchSummary();
-  }, [patientId]);
+    fetchAndPoll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [resolvedId, retryKey]);
+
+  useEffect(() => {
+    getUserInfo()
+      .then((res) => {
+        setUserRole(res.data.role_chosen || "");
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleGenerateReport = async (status) => {
+    setReportLoading(true);
+    setReportSuccess("");
+    setReportError("");
+    try {
+      const res = await generateSummaryReport({
+        patient_uid: resolvedId,
+        attempt_uid: attemptUid,
+        status,
+      });
+      if (res.data.success) {
+        setReportSuccess(`Report ${status === "approved" ? "Approved" : "Flagged"} successfully`);
+      } else {
+        setReportError(res.data.message || "Failed to generate report");
+      }
+    } catch {
+      setReportError("Failed to generate report. Please try again.");
+    } finally {
+      setReportLoading(false);
+    }
+  };
 
   const toggleAccept = (title) => {
     setAccepted((prev) => {
@@ -304,17 +355,110 @@ export default function AiSummaryPage() {
     setExpanded((prev) => (prev === title ? null : title));
   };
 
+  const selectPatient = (uid) => {
+    setResolvedId(uid);
+    setSelectingPatient(false);
+    setLoading(true);
+  };
+
   const reviewedCount = accepted.size;
   const totalSections = sections.length;
-  const confidencePercent =
-    dataHealth.confidence === "high" ? "90%" : dataHealth.confidence === "medium" ? "60%" : "30%";
+  const confidencePercent = `${Math.round(overallRelevance * 100)}%`;
+  const confidenceLabel = overallRelevance >= 0.7 ? "High" : overallRelevance >= 0.4 ? "Medium" : "Low";
+
+  if (selectingPatient && !loading) {
+    return (
+      <div className="ai-summary-layout">
+        <aside className="ai-source-panel" />
+        <div className="ai-summary-center">
+          <div className="ai-progress-container" style={{ alignItems: "stretch", maxWidth: 480, margin: "0 auto" }}>
+            <h3 className="ai-progress-title" style={{ textAlign: "center" }}>Select a Patient</h3>
+            <p className="ai-progress-subtitle" style={{ textAlign: "center" }}>Choose a patient to view their AI Summary.</p>
+            {patientsList.length === 0 && !error && (
+              <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No patients found.</p>
+            )}
+            {error && (
+              <p style={{ textAlign: "center", color: "#ef4444", fontSize: 13 }}>{error}</p>
+            )}
+            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+              {patientsList.map((p) => {
+                const initials = p.name ? p.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2) : "??";
+                return (
+                  <button
+                    key={p.uid}
+                    onClick={() => selectPatient(p.uid)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                      border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff",
+                      cursor: "pointer", textAlign: "left", transition: "0.12s ease",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
+                  >
+                    <span style={{
+                      width: 36, height: 36, borderRadius: "50%", background: "#ede9fe",
+                      color: "#7c3aed", display: "grid", placeItems: "center",
+                      fontSize: 13, fontWeight: 700, flexShrink: 0,
+                    }}>
+                      {initials}
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                        {p.primary_condition?.diagnosis || "No diagnosis"}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <aside className="ai-actions-panel" />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
       <div className="ai-summary-layout">
-        <div className="ai-summary-center" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <p>Generating AI summary…</p>
+        <aside className="ai-source-panel" />
+        <div className="ai-summary-center">
+          <div className="ai-progress-container">
+            <div className="ai-progress-spinner" />
+            <h3 className="ai-progress-title">Generating AI Summary</h3>
+            <p className="ai-progress-subtitle">Analyzing medical data for your report…</p>
+            {progressSteps.length > 0 && (
+              <div className="ai-progress-steps">
+                {progressSteps.slice(-2).map((step, i) => (
+                  <div key={i} className="ai-progress-step">
+                    <span className="ai-progress-step-dot" />
+                    <span className="ai-progress-step-label">{formatStepName(step.tag)}</span>
+                    {step.docs_processed != null && step.docs_remaining != null && (
+                      <div className="ai-progress-docs">
+                        <span className="ai-progress-docs-text">
+                          {step.docs_processed} / {step.docs_processed + step.docs_remaining} docs processed
+                        </span>
+                        <div className="ai-progress-docs-bar">
+                          <div
+                            className="ai-progress-docs-fill"
+                            style={{
+                              width: step.docs_processed + step.docs_remaining > 0
+                                ? `${(step.docs_processed / (step.docs_processed + step.docs_remaining)) * 100}%`
+                                : "0%",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {step.err && <span className="ai-progress-step-error">{step.err}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+        <aside className="ai-actions-panel" />
       </div>
     );
   }
@@ -322,9 +466,23 @@ export default function AiSummaryPage() {
   if (error) {
     return (
       <div className="ai-summary-layout">
-        <div className="ai-summary-center" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <p>{error}</p>
+        <aside className="ai-source-panel" />
+        <div className="ai-summary-center">
+          <div className="ai-progress-container">
+            <p style={{ color: "#ef4444", margin: 0, fontSize: 14 }}>{error}</p>
+            <button
+              onClick={() => { setError(""); setProgressSteps([]); setRetryKey((k) => k + 1); }}
+              style={{
+                marginTop: 8, padding: "8px 20px", borderRadius: 8,
+                border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer",
+                fontSize: 13, fontWeight: 500, color: "#334155",
+              }}
+            >
+              Retry
+            </button>
+          </div>
         </div>
+        <aside className="ai-actions-panel" />
       </div>
     );
   }
@@ -335,30 +493,39 @@ export default function AiSummaryPage() {
       <aside className="ai-source-panel">
         <div className="ai-source-header">Source Documents</div>
         <div className="ai-source-list">
-          {sections.map((section) => (
-            <button className="ai-source-item" key={section.title}>
-              <span className="ai-doc-icon">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14,2 14,8 20,8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <line x1="10" y1="9" x2="8" y2="9" />
-                </svg>
-              </span>
-              <div className="ai-source-info">
-                <div className="ai-source-name">{section.source}</div>
-                <div className="ai-source-type">{section.title}</div>
+          {documents.length === 0 && (
+            <div className="ai-source-empty">No documents uploaded</div>
+          )}
+          {documents.map((doc) => {
+            const ext = doc.mimetype?.split("/").pop()?.toUpperCase() || "FILE";
+            return (
+              <div className="ai-source-item" key={doc.uid}>
+                <span className="ai-doc-icon">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14,2 14,8 20,8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <line x1="10" y1="9" x2="8" y2="9" />
+                  </svg>
+                </span>
+                <div className="ai-source-info">
+                  <div className="ai-source-name">{doc.filename}</div>
+                  <div className="ai-source-type">{ext}{doc.num_pages ? ` · ${doc.num_pages} pages` : ""}</div>
+                </div>
+                <span className={`ai-doc-status ${doc.upload_finished ? "ready" : "processing"}`}>
+                  {doc.upload_finished ? "✓" : "◯"}
+                </span>
               </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
         <div className="ai-confidence-footer">
           <div className="ai-confidence-label">AI Confidence</div>
           <div className="ai-confidence-bar">
             <div className="ai-confidence-fill" style={{ width: confidencePercent }} />
           </div>
-          <span className="ai-confidence-value">{dataHealth.confidence}</span>
+          <span className="ai-confidence-value">{confidenceLabel}</span>
         </div>
       </aside>
 
@@ -437,10 +604,13 @@ export default function AiSummaryPage() {
                       </svg>
                       <span>{section.source}</span>
                     </div>
-                    <pre className="ai-section-content">{section.content}</pre>
-                    {section.chartData && <BiomarkerChart biomarkers={section.chartData} />}
+                    {section.chartData ? (
+                      <BiomarkerChart biomarkers={section.chartData} />
+                    ) : (
+                      <pre className="ai-section-content">{section.content}</pre>
+                    )}
                     <div className="ai-section-actions">
-                      <button
+                      {/* <button
                         className={`ai-sec-btn ${isAccepted ? "sec-accepted" : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -486,7 +656,7 @@ export default function AiSummaryPage() {
                           <circle cx="12" cy="12" r="3" />
                         </svg>
                         Show Evidence
-                      </button>
+                      </button> */}
                     </div>
                   </div>
                 )}
@@ -500,12 +670,40 @@ export default function AiSummaryPage() {
       <aside className="ai-actions-panel">
         <div className="ai-actions-header">Clinical Actions</div>
         <div className="ai-actions-body">
-          <button className="ai-approve-all" onClick={() => setAccepted(new Set(sections.map((s) => s.title)))}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-            Approve All
-          </button>
+          <div className="ai-export-label">Generate Summary Report</div>
+          {userRole === "doctor" && (
+            <>
+              {reportSuccess && (
+                <p style={{ color: "#059669", fontSize: 12, margin: "4px 0" }}>{reportSuccess}</p>
+              )}
+              {reportError && (
+                <p style={{ color: "#dc2626", fontSize: 12, margin: "4px 0" }}>{reportError}</p>
+              )}
+              <button
+                className="ai-export-card"
+                style={{ borderColor: "#059669", color: "#059669" }}
+                disabled={reportLoading}
+                onClick={() => handleGenerateReport("approved")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                <span className="ai-export-card-text">{reportLoading ? "Submitting..." : "Approved"}</span>
+              </button>
+              <button
+                className="ai-export-card"
+                style={{ borderColor: "#dc2626", color: "#dc2626" }}
+                disabled={reportLoading}
+                onClick={() => handleGenerateReport("flagged")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                  <line x1="4" y1="22" x2="4" y2="15" />
+                </svg>
+                <span className="ai-export-card-text">{reportLoading ? "Submitting..." : "Flagged"}</span>
+              </button>
+            </>
+          )}
 
           <div className="ai-review-stats">
             <div className="ai-stats-label">Review Progress</div>

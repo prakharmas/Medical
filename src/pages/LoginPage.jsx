@@ -8,15 +8,16 @@ export default function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("doctor");
 
   const signIn = async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await login(email, password, "doctor");
+      const response = await login(email, password, role);
       if (response.data.success) {
         localStorage.setItem("access_token", response.data.token);
-        onLogin();
+        onLogin(role);
       } else {
         setError("Login failed. Please check your credentials.");
       }
@@ -128,6 +129,17 @@ export default function LoginPage({ onLogin }) {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
+              </label>
+              <label>
+                Role
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  required
+                >
+                  <option value="doctor">Doctor</option>
+                  <option value="admin">Admin</option>
+                </select>
               </label>
               <label>
                 Password

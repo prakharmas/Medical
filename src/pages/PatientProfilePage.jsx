@@ -1,94 +1,37 @@
 ﻿import { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { Upload, Mic, Download } from "lucide-react";
 import {
   createMedicalDocument,
   uploadMedicalDocument,
   listMedicalDocuments,
+  generateMedicalSummary,
 } from "../api/api";
 
-const timeline = [
-  {
-    type: "Diagnosis",
-    title: "Initial Diagnosis",
-    date: "2023-01-15",
-    color: "red",
-    description:
-      "IDC Right Breast Stage IIIB confirmed via clinical examination and mammography. Referred to oncology.",
-    sources: ["Pathology Report", "Mammography Report"],
-  },
-  {
-    type: "Biopsy",
-    title: "Core Needle Biopsy",
-    date: "2023-01-22",
-    color: "purple",
-    description:
-      "Core needle biopsy of right breast mass. Histopathology confirmed invasive ductal carcinoma, Grade 2. ER/PR negative, HER2 positive (IHC 3+).",
-    sources: ["Histopathology Report"],
-  },
-  {
-    type: "Scan",
-    title: "Staging PET-CT Scan",
-    date: "2023-02-10",
-    color: "cyan",
-    description:
-      "PET-CT whole body scan. FDG-avid right breast mass 3.8 cm with ipsilateral axillary lymphadenopathy. No distant metastases. Clinical Stage IIIB (T3N2M0).",
-    sources: ["PET-CT Report"],
-  },
-  {
-    type: "Chemotherapy",
-    title: "Chemotherapy — Cycle 1",
-    date: "2023-03-01",
-    color: "blue",
-    description:
-      "Neoadjuvant TCHP initiated: Docetaxel 75 mg/m², Carboplatin AUC 5, Trastuzumab 8 mg/kg loading, Pertuzumab 420 mg loading. Cycle 1 of 6 completed without significant toxicity.",
-    sources: ["Chemo Record", "Day Care Notes"],
-  },
-  {
-    type: "Scan",
-    title: "Interim PET-CT — Partial Response",
-    date: "2023-06-15",
-    color: "cyan",
-    description:
-      "Interim PET-CT after 3 cycles. Significant reduction in FDG uptake — partial metabolic response. Tumor size reduced from 3.8 cm to 1.9 cm. Continue planned chemotherapy.",
-    sources: ["PET-CT Report"],
-  },
-  {
-    type: "Chemotherapy",
-    title: "Chemotherapy — Cycle 6 (Final)",
-    date: "2023-08-15",
-    color: "blue",
-    description:
-      "Final cycle of neoadjuvant TCHP completed. Total 6 cycles administered (Mar–Aug 2023). Grade 2 neutropenia managed with G-CSF support. No dose reductions required.",
-    sources: ["Chemo Record", "Discharge Summary"],
-  },
-  {
-    type: "Surgery",
-    title: "Modified Radical Mastectomy",
-    date: "2023-09-20",
-    color: "red",
-    description:
-      "Right Modified Radical Mastectomy with level II axillary clearance. Intraoperative course uneventful. Specimen sent for final histopathology.",
-    sources: ["Operation Notes", "Surgical Record"],
-  },
-  {
-    type: "Medication",
-    title: "Adjuvant T-DM1 Initiated",
-    date: "2023-10-15",
-    color: "slate",
-    description:
-      "Adjuvant ado-trastuzumab emtansine (T-DM1) 3.6 mg/kg IV every 3 weeks initiated. Planned 14 cycles. Baseline echo: LVEF 62% — normal. First cycle tolerated well.",
-    sources: ["Treatment Plan", "Discharge Summary"],
-  },
-  {
-    type: "Follow-up",
-    title: "Routine Follow-up",
-    date: "2024-07-18",
-    color: "green",
-    description:
-      "Follow-up post-curative treatment. Patient reports fatigue (ECOG 1) and mild peripheral neuropathy. PET-CT: complete metabolic response. T-DM1 Cycle 10 completed. 4 cycles remaining.",
-    sources: ["Follow-up Note", "PET-CT Report", "Lab Reports"],
-  },
-];
+const COLORS = ["red", "cyan", "blue", "purple", "green", "slate"];
+
+const TYPE_COLOR_MAP = {
+  Diagnosis: "red",
+  Biopsy: "purple",
+  Scan: "cyan",
+  Imaging: "cyan",
+  "Lab Result": "green",
+  Lab: "green",
+  Chemotherapy: "blue",
+  Treatment: "blue",
+  Surgery: "red",
+  Medication: "slate",
+  "Follow-up": "green",
+  Followup: "green",
+  Pathology: "purple",
+};
+
+function guessColor(title, idx) {
+  for (const [key, c] of Object.entries(TYPE_COLOR_MAP)) {
+    if (title.toLowerCase().includes(key.toLowerCase())) return c;
+  }
+  return COLORS[idx % COLORS.length];
+}
 
 const toneMap = {
   "application/pdf": "violet",
@@ -111,10 +54,13 @@ export default function PatientProfilePage() {
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [documents, setDocuments] = useState([]);
+  const [timelineEvents, setTimelineEvents] = useState([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchDocuments();
+    fetchTimeline();
   }, [patientId]);
 
   const fetchDocuments = async () => {
@@ -136,9 +82,44 @@ export default function PatientProfilePage() {
       } else {
         setDocuments([]);
       }
-    } catch (err) {
+    } catch {
       setDocuments([]);
     }
+  };
+
+  const fetchTimeline = async () => {
+    setTimelineLoading(true);
+    try {
+      const res = await generateMedicalSummary({ patient_uid: patientId });
+      const events = res.data?.summary?.dated_medical_events;
+      if (events?.length) {
+        const flat = [];
+        let idx = 0;
+        for (const group of events) {
+          const dateStr = group.date
+            ? new Date(typeof group.date === "number" && group.date < 1e12 ? group.date * 1000 : group.date)
+                .toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" })
+            : "—";
+          for (const evt of group.events || []) {
+            flat.push({
+              type: evt.title || "Event",
+              title: evt.title || "Event",
+              date: dateStr,
+              color: guessColor(evt.title || "", idx),
+              description: evt.info || "",
+              sources: [],
+            });
+            idx++;
+          }
+        }
+        setTimelineEvents(flat);
+      } else {
+        setTimelineEvents([]);
+      }
+    } catch {
+      setTimelineEvents([]);
+    }
+    setTimelineLoading(false);
   };
 
   const saveNote = () => {
@@ -151,47 +132,37 @@ export default function PatientProfilePage() {
   };
 
   const handleFileSelected = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
     setUploading(true);
-    let uploaded = 0;
-    let failed = 0;
+    try {
+      const createRes = await createMedicalDocument({
+        patient_uid: patientId,
+        filename: file.name,
+        preset_uid: null,
+      });
 
-    for (const file of files) {
-      try {
-        const createRes = await createMedicalDocument({
-          patient_uid: patientId,
-          filename: file.name,
-          preset_uid: null,
-        });
+      if (createRes.data.success) {
+        const docUid = createRes.data.uid;
+        const formData = new FormData();
+        formData.append("medical_document_uid", docUid);
+        formData.append("file", file);
 
-         if (createRes.data.success) {
-          const docUid = createRes.data.uid;
-          const formData = new FormData();
-          formData.append("medical_document_uid", docUid);
-          formData.append("file", file);
-
-          const uploadRes = await uploadMedicalDocument(formData);
-          if (uploadRes.data.success) {
-            uploaded++;
-          } else {
-            failed++;
-          }
+        const uploadRes = await uploadMedicalDocument(formData);
+        if (uploadRes.data.success) {
+          alert("File uploaded successfully!");
+          fetchDocuments();
         } else {
-          failed++;
+          alert("Upload failed.");
         }
-      } catch {
-        failed++;
+      } else {
+        alert("Failed to create document.");
       }
+    } catch {
+      alert("Upload failed.");
     }
 
-    if (uploaded > 0) fetchDocuments();
-    alert(
-      failed === 0
-        ? `${uploaded} file(s) uploaded successfully!`
-        : `${uploaded} uploaded, ${failed} failed.`
-    );
     setUploading(false);
     e.target.value = "";
   };
@@ -223,7 +194,7 @@ export default function PatientProfilePage() {
             </div>
             <div className="profile-facts">
               <span>
-                Cancer Type: <strong>{patient?.primary_condition?.diagnosis || "—"}</strong>
+                Diagnosis: <strong>{patient?.primary_condition?.diagnosis || "—"}</strong>
               </span>
               <span>
                 Stage: <strong>{patient?.primary_condition?.stage_or_severity || "—"}</strong>
@@ -246,14 +217,20 @@ export default function PatientProfilePage() {
             ref={fileInputRef}
             style={{ display: "none" }}
             accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-            multiple
             onChange={handleFileSelected}
           />
-          <button onClick={handleUploadClick} disabled={uploading}>
-            {uploading ? "☁ Uploading..." : "☁ Upload"}
+          <button onClick={handleUploadClick} disabled={uploading} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <Upload size={14} strokeWidth={2} />
+            {uploading ? "Uploading..." : "Upload"}
           </button>
-          <button>♩ Voice</button>
-          <button>☁ Export</button>
+          <button style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <Mic size={14} strokeWidth={2} />
+            Voice
+          </button>
+          <button style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <Download size={14} strokeWidth={2} />
+            Export
+          </button>
           <button
             className="profile-ai"
             onClick={() => navigate("/ai-summary", { state: { patientId } })}
@@ -284,13 +261,23 @@ export default function PatientProfilePage() {
       </nav>
       {tab === "timeline" && (
         <section className="patient-timeline">
-          {timeline.map((event, index) => (
-            <div className="timeline-item" key={event.title}>
+          {timelineLoading && (
+            <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8", fontSize: 13 }}>
+              Loading timeline…
+            </div>
+          )}
+          {!timelineLoading && timelineEvents.length === 0 && (
+            <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8", fontSize: 13 }}>
+              No timeline events found. Upload documents to generate a timeline.
+            </div>
+          )}
+          {timelineEvents.map((event, index) => (
+            <div className="timeline-item" key={`${event.date}-${event.title}-${index}`}>
               <div className="timeline-left">
                 <div className={`timeline-node ${event.color}`}>
                   {index + 1}
                 </div>
-                {index < timeline.length - 1 && (
+                {index < timelineEvents.length - 1 && (
                   <div className="timeline-connector" />
                 )}
               </div>
@@ -303,7 +290,6 @@ export default function PatientProfilePage() {
                     <span className={`timeline-badge ${event.color}`}>
                       {event.type}
                     </span>
-                    <span className="timeline-card-title">{event.title}</span>
                   </div>
                   <div className="timeline-card-meta">
                     <span className="timeline-date">{event.date}</span>

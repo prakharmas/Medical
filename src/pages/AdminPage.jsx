@@ -1,47 +1,5 @@
-import { useState } from "react";
-
-const doctors = [
-  {
-    name: "Dr. Ananya Krishnan",
-    initials: "KA",
-    dept: "Medical Oncology",
-    role: "Attending Oncologist",
-    sessions: 847,
-    status: "active",
-  },
-  {
-    name: "Dr. Vikram Mehta",
-    initials: "MV",
-    dept: "Radiation Oncology",
-    role: "Attending Oncologist",
-    sessions: 612,
-    status: "active",
-  },
-  {
-    name: "Dr. Priya Nair",
-    initials: "NP",
-    dept: "Surgical Oncology",
-    role: "Senior Resident",
-    sessions: 423,
-    status: "active",
-  },
-  {
-    name: "Dr. Rahul Sinha",
-    initials: "SR",
-    dept: "Hemato-Oncology",
-    role: "Junior Resident",
-    sessions: 318,
-    status: "active",
-  },
-  {
-    name: "Dr. Meera Iyer",
-    initials: "IM",
-    dept: "Palliative Care",
-    role: "Attending Oncologist",
-    sessions: 205,
-    status: "inactive",
-  },
-];
+import { useState, useEffect } from "react";
+import { createUser, listUsersDetailed, editUser, listEventsDetailed, getSummaryReportArtifact } from "../api/api";
 
 const tabs = [
   "Doctors",
@@ -54,6 +12,165 @@ const tabs = [
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("Doctors");
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({
+    username: "",
+    password: "",
+    name: "",
+    gender: "male",
+    dob: "",
+    email: "",
+    phone: "",
+    doctor_department: "",
+    preset_uid: "",
+    roles: ["doctor"],
+  });
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [editingUser, setEditingUser] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [auditEvents, setAuditEvents] = useState([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditPage, setAuditPage] = useState(0);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const [downloading, setDownloading] = useState(null);
+
+  const downloadReport = async (reportUid) => {
+    setDownloading(reportUid);
+    try {
+      const res = await getSummaryReportArtifact({ report_uid: reportUid });
+      const disposition = res.headers?.["content-disposition"] || "";
+      const match = disposition.match(/filename="?(.+?)"?$/);
+      const filename = match ? match[1] : `summary-report-${reportUid}.zip`;
+      const blob = new Blob([res.data], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Failed to download report.");
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const fetchAuditEvents = (page) => {
+    setLoadingAudit(true);
+    listEventsDetailed({ num_per_page: 10, page_index: page, order_asc: false })
+      .then((res) => {
+        if (res.data.success) {
+          setAuditEvents(res.data.events);
+          setAuditTotal(res.data.num_total);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAudit(false));
+  };
+
+  useEffect(() => {
+    if (activeTab === "Audit Log") fetchAuditEvents(auditPage);
+  }, [activeTab]);
+
+  const openCreateModal = () => {
+    setEditingUser(null);
+    setForm({
+      username: "",
+      password: "",
+      name: "",
+      gender: "male",
+      dob: "",
+      email: "",
+      phone: "",
+      doctor_department: "",
+      preset_uid: "",
+      roles: ["doctor"],
+      enabled: true,
+    });
+    setFormError("");
+    setShowModal(true);
+  };
+
+  const openEditModal = (user) => {
+    setEditingUser(user);
+    setForm({
+      username: user.username || "",
+      password: "",
+      name: user.name || "",
+      gender: "male",
+      dob: "",
+      email: user.email || "",
+      phone: user.phone || "",
+      doctor_department: user.doctor_department || "",
+      preset_uid: "",
+      roles: user.roles || ["doctor"],
+      enabled: user.enabled !== false,
+    });
+    setFormError("");
+    setShowModal(true);
+  };
+
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const res = await listUsersDetailed();
+      if (res.data.success) {
+        setUsers(res.data.users);
+      }
+    } catch {
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleRoleToggle = (role) => {
+    const exists = form.roles.includes(role);
+    setForm({
+      ...form,
+      roles: exists ? form.roles.filter((r) => r !== role) : [...form.roles, role],
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError("");
+    try {
+      const payload = {
+        username: form.username,
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        doctor_department: form.doctor_department || null,
+        roles: form.roles,
+        enabled: form.enabled,
+      };
+      if (form.password) payload.password = form.password;
+      if (editingUser) {
+        await editUser(payload);
+      } else {
+        await createUser({ ...payload, gender: form.gender, dob: form.dob ? new Date(form.dob).getTime() : 0, preset_uid: form.preset_uid || null });
+      }
+      fetchUsers();
+      setShowModal(false);
+    } catch (err) {
+      setFormError(err.response?.data?.message || "Failed to save user.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="admin-page">
@@ -75,10 +192,10 @@ export default function AdminPage() {
           </div>
           <div>
             <h1>Admin Panel</h1>
-            <p>Tata Memorial Centre &middot; Hospital Administrator</p>
+            {/* <p>Tata Memorial Centre &middot; Hospital Administrator</p> */}
           </div>
         </div>
-        <div className="admin-header-stats">
+        {/* <div className="admin-header-stats">
           <div className="admin-header-stat">
             <div className="admin-header-stat-value">24</div>
             <div className="admin-header-stat-label">Active Doctors</div>
@@ -95,7 +212,7 @@ export default function AdminPage() {
             <div className="admin-header-stat-value">99.9%</div>
             <div className="admin-header-stat-label">API Uptime</div>
           </div>
-        </div>
+        </div> */}
       </div>
 
       <div className="admin-tabs">
@@ -115,42 +232,53 @@ export default function AdminPage() {
           <div className="admin-table-section">
             <div className="admin-table-header">
               <span className="admin-table-title">
-                All Doctors ({doctors.length})
+                All Users ({users.length})
               </span>
-              <button className="admin-add-btn">+ Add Doctor</button>
+              <button className="admin-add-btn" onClick={openCreateModal}>+ Add User</button>
             </div>
             <div className="admin-table-wrapper">
               <table className="admin-table">
                 <thead>
                   <tr>
                     <th>Name</th>
+                    <th>Email</th>
                     <th>Department</th>
-                    <th>Role</th>
-                    <th>AI Sessions</th>
+                    <th>Roles</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {doctors.map((doc) => (
-                    <tr key={doc.initials}>
+                  {loadingUsers ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>Loading...</td>
+                    </tr>
+                  ) : users.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>No users found.</td>
+                    </tr>
+                  ) : users.map((user) => (
+                    <tr key={user.uid}>
                       <td className="admin-table-name">
-                        <div className="admin-avatar">{doc.initials}</div>
-                        <span>{doc.name}</span>
+                        <div className="admin-avatar">
+                          {user.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                        <span>{user.name}</span>
                       </td>
-                      <td>{doc.dept}</td>
-                      <td>{doc.role}</td>
-                      <td className="admin-table-sessions">{doc.sessions}</td>
+                      <td>{user.email || "—"}</td>
+                      <td>{user.doctor_department || "—"}</td>
                       <td>
-                        <span className={`admin-status ${doc.status}`}>
-                          {doc.status}
+                        <span className={`admin-role-badge ${user.roles?.includes("admin") ? "admin" : "doctor"}`}>
+                          {user.roles?.join(", ")}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`admin-status ${user.enabled ? "active" : "inactive"}`}>
+                          {user.enabled ? "active" : "inactive"}
                         </span>
                       </td>
                       <td className="admin-table-actions">
-                        <button className="admin-action-btn">Edit</button>
-                        <button className="admin-action-btn danger">
-                          Disable
-                        </button>
+                        <button className="admin-action-btn" onClick={() => openEditModal(user)}>Edit</button>
                       </td>
                     </tr>
                   ))}
@@ -330,76 +458,154 @@ export default function AdminPage() {
         {activeTab === "Audit Log" && (
           <div className="admin-audit">
             <div className="admin-table-header">
-              <span className="admin-table-title">Audit Logs</span>
-              <button className="admin-outline-btn">Export Logs</button>
+              <span className="admin-table-title">Audit Logs ({auditTotal})</span>
+              {/* <button className="admin-outline-btn">Export Logs</button> */}
             </div>
             <div className="admin-audit-list">
-              {[
-                {
-                  action: "Patient record exported",
-                  user: "Dr. Ananya Krishnan",
-                  time: "2 min ago",
-                  type: "export",
-                },
-                {
-                  action: "AI summary approved",
-                  user: "Dr. Vikram Mehta",
-                  time: "8 min ago",
-                  type: "review",
-                },
-                {
-                  action: "New document uploaded",
-                  user: "Dr. Priya Nair",
-                  time: "14 min ago",
-                  type: "upload",
-                },
-                {
-                  action: "SSO configuration updated",
-                  user: "Hospital Admin",
-                  time: "1 hr ago",
-                  type: "security",
-                },
-                {
-                  action: "Doctor account created",
-                  user: "Hospital Admin",
-                  time: "2 hrs ago",
-                  type: "account",
-                },
-                {
-                  action: "EMR integration synced",
-                  user: "System",
-                  time: "3 hrs ago",
-                  type: "integration",
-                },
-                {
-                  action: "API key rotated",
-                  user: "Hospital Admin",
-                  time: "5 hrs ago",
-                  type: "security",
-                },
-                {
-                  action: "Department permissions updated",
-                  user: "Hospital Admin",
-                  time: "Yesterday",
-                  type: "permissions",
-                },
-              ].map((log, i) => (
-                <div className="admin-audit-row" key={i}>
-                  <div className={`admin-audit-dot ${log.type}`} />
+              {loadingAudit ? (
+                <div style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>Loading...</div>
+              ) : auditEvents.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>No events found.</div>
+              ) : auditEvents.map((ev) => (
+                <div className="admin-audit-row" key={ev.uid}>
+                  <div className="admin-audit-dot account" />
                   <div className="admin-audit-info">
-                    <div className="admin-audit-action">{log.action}</div>
-                    <div className="admin-audit-user">{log.user}</div>
+                    <div className="admin-audit-action">
+                      <strong>{ev.actor?.name}</strong> created <strong>{ev.subject?.name}</strong> ({ev.subject?.tag})
+                    </div>
+                    <div className="admin-audit-user">{ev.tag}</div>
                   </div>
-                  <div className="admin-audit-time">{log.time}</div>
-                  <span className={`admin-audit-badge ${log.type}`}>
-                    {log.type}
-                  </span>
+                  <div className="admin-audit-time">{new Date(ev.ts * 1000).toLocaleString()}</div>
+                  {ev.tag === "summary-report" && ev.subject?.uid ? (
+                    <button
+                      className="admin-outline-btn"
+                      style={{ marginLeft: 8, fontSize: 12, padding: "4px 10px", flexShrink: 0 }}
+                      disabled={downloading === ev.subject.uid}
+                      onClick={() => downloadReport(ev.subject.uid)}
+                    >
+                      {downloading === ev.subject.uid ? "..." : "Download"}
+                    </button>
+                  ) : (
+                    <span className="admin-audit-badge account">{ev.tag}</span>
+                  )}
                 </div>
               ))}
+            </div>
+            <div className="admin-pagination">
+              <button
+                className="admin-outline-btn"
+                disabled={auditPage === 0}
+                onClick={() => {
+                  const next = auditPage - 1;
+                  setAuditPage(next);
+                  fetchAuditEvents(next);
+                }}
+              >
+                Previous
+              </button>
+              <span className="admin-page-info">Page {auditPage + 1} of {Math.max(1, Math.ceil(auditTotal / 10))}</span>
+              <button
+                className="admin-outline-btn"
+                disabled={(auditPage + 1) * 10 >= auditTotal}
+                onClick={() => {
+                  const next = auditPage + 1;
+                  setAuditPage(next);
+                  fetchAuditEvents(next);
+                }}
+              >
+                Next
+              </button>
             </div>
           </div>
         )}
       </div>
+      {showModal && (
+        <div className="admin-modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-header">
+              <h2>{editingUser ? "Edit User" : "Create User"}</h2>
+              <button className="admin-modal-close" onClick={() => setShowModal(false)}>&times;</button>
+            </div>
+            <form className="admin-modal-form" onSubmit={handleSubmit}>
+              <label>
+                Username *
+                <input name="username" value={form.username} onChange={handleChange} required />
+              </label>
+              <label>
+                Password {editingUser ? "(leave blank to keep)" : "*"}
+                <input name="password" type="password" value={form.password} onChange={handleChange} required={!editingUser} />
+              </label>
+              <label>
+                Full Name *
+                <input name="name" value={form.name} onChange={handleChange} required />
+              </label>
+              {!editingUser && (
+                <div className="admin-modal-row">
+                  <label>
+                    Gender
+                    <select name="gender" value={form.gender} onChange={handleChange}>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label>
+                    DOB
+                    <input name="dob" type="date" value={form.dob} onChange={handleChange} />
+                  </label>
+                </div>
+              )}
+              <label>
+                Email
+                <input name="email" type="email" value={form.email} onChange={handleChange} />
+              </label>
+              <label>
+                Phone
+                <input name="phone" value={form.phone} onChange={handleChange} />
+              </label>
+              <label>
+                Department
+                <input name="doctor_department" value={form.doctor_department} onChange={handleChange} placeholder="e.g. Medical Oncology" />
+              </label>
+              {!editingUser && (
+                <label>
+                  Preset UID
+                  <input name="preset_uid" value={form.preset_uid} onChange={handleChange} placeholder="Optional" />
+                </label>
+              )}
+              <div className="admin-modal-field">
+                <span className="admin-modal-label">Roles *</span>
+                <div className="admin-modal-checkboxes">
+                  <label className="admin-checkbox-label">
+                    <input type="checkbox" checked={form.roles.includes("doctor")} onChange={() => handleRoleToggle("doctor")} />
+                    Doctor
+                  </label>
+                  <label className="admin-checkbox-label">
+                    <input type="checkbox" checked={form.roles.includes("admin")} onChange={() => handleRoleToggle("admin")} />
+                    Admin
+                  </label>
+                </div>
+              </div>
+              {editingUser && (
+                <div className="admin-modal-field">
+                  <span className="admin-modal-label">Status</span>
+                  <label className="admin-checkbox-label">
+                    <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+                    Account enabled
+                  </label>
+                </div>
+              )}
+              {formError && <p className="admin-modal-error">{formError}</p>}
+              <div className="admin-modal-actions">
+                <button type="button" className="admin-outline-btn" onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="submit" className="admin-add-btn" disabled={saving}>
+                  {saving ? "Saving..." : editingUser ? "Save Changes" : "Create User"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

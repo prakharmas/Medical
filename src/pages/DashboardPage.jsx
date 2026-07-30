@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users,
@@ -12,26 +12,27 @@ import {
   AlertTriangle,
   Calendar,
 } from "lucide-react";
-const stats = [
+import { getDashboard, getUserInfo } from "../api/api";
+const defaultStats = [
   {
     icon: Users,
-    value: "24",
+    value: "—",
     label: "Patients Today",
-    delta: "+3 from yesterday",
+    delta: "",
     iconColor: "#5b6b85",
     iconBg: "#eef2f7",
   },
   {
     icon: Clock,
-    value: "8m",
+    value: "—",
     label: "Avg. Summary Time",
-    delta: "↓ 2m vs last week",
+    delta: "",
     iconColor: "#2f9e6f",
     iconBg: "#e6f8f0",
   },
   {
     icon: Mic,
-    value: "12",
+    value: "-",
     label: "Voice Sessions",
     delta: "Today",
     iconColor: "#7554b8",
@@ -39,7 +40,7 @@ const stats = [
   },
   {
     icon: Eye,
-    value: "5",
+    value: "-",
     label: "Pending Review",
     delta: "Needs your approval",
     iconColor: "#c98a2c",
@@ -112,6 +113,33 @@ const statusStyles = {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const [stats, setStats] = useState(defaultStats);
+  const [userName, setUserName] = useState("");
+  const [userDept, setUserDept] = useState("");
+
+  useEffect(() => {
+    getDashboard()
+      .then((res) => {
+        const d = res.data;
+        if (d.success) {
+          setStats((prev) => [
+            { ...prev[0], value: String(d.patients_created_today ?? "—") },
+            { ...prev[1], value: d.average_summary_time ? `${Math.round(d.average_summary_time)}s` : "—" },
+            prev[2],
+            prev[3],
+          ]);
+        }
+      })
+      .catch(() => {});
+
+    getUserInfo()
+      .then((res) => {
+        const d = res.data;
+        if (d.name) setUserName(d.name.replace(/^dr\.?\s*/i, ""));
+        if (d.doctor_department) setUserDept(d.doctor_department);
+      })
+      .catch(() => {});
+  }, []);
 
   // Opens the OS file picker. Wired to both the header "Upload Records"
   // button and the Quick Actions "Upload Records" row.
@@ -154,12 +182,12 @@ export default function DashboardPage() {
       subtitle: "UHID, MRN, Name",
       onClick: () => navigate("/patients"),
     },
-    {
-      icon: Upload,
-      title: "Upload Records",
-      subtitle: "PDF, Scans, Reports",
-      onClick: handleUploadClick,
-    },
+    // {
+    //   icon: Upload,
+    //   title: "Upload Records",
+    //   subtitle: "PDF, Scans, Reports",
+    //   onClick: handleUploadClick,
+    // },
     {
       icon: Mic,
       title: "Start Voice Note",
@@ -238,320 +266,6 @@ export default function DashboardPage() {
   });
   return (
     <>
-      <style>{`
-        .dash-greeting-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 22px;
-        }
-        .dash-greeting-row h1 {
-          margin: 0;
-          color: #172338;
-          font-size: 21px;
-          letter-spacing: -0.4px;
-        }
-        .dash-greeting-row p {
-          margin: 5px 0 0;
-          color: #758399;
-          font-size: 13px;
-        }
-        .dash-greeting-actions {
-          display: flex;
-          gap: 10px;
-        }
-        .dash-greeting-actions button {
-          display: flex;
-          align-items: center;
-          gap: 7px;
-        }
-        .stat-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 16px;
-          margin-bottom: 20px;
-        }
-        .stat-card {
-          padding: 18px 19px;
-          border: 1px solid #e8edf4;
-          border-radius: 13px;
-          background: #fff;
-          box-shadow: 0 3px 12px rgba(28, 53, 88, 0.025);
-        }
-        .stat-icon {
-          display: grid;
-          width: 34px;
-          height: 34px;
-          place-items: center;
-          margin-bottom: 14px;
-          border-radius: 9px;
-        }
-        .stat-card strong {
-          display: block;
-          color: #172338;
-          font-size: 25px;
-          letter-spacing: -0.6px;
-        }
-        .stat-card small {
-          display: block;
-          margin-top: 3px;
-          color: #64738a;
-          font-size: 12px;
-          font-weight: 650;
-        }
-        .stat-delta {
-          display: block;
-          margin-top: 8px;
-          color: #98a5b6;
-          font-size: 11px;
-        }
-        .dash-columns {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) 320px;
-          gap: 16px;
-          align-items: start;
-        }
-        .dash-panel {
-          border: 1px solid #e8edf4;
-          border-radius: 13px;
-          background: #fff;
-          box-shadow: 0 3px 12px rgba(28, 53, 88, 0.025);
-        }
-        .dash-panel .panel-title {
-          padding: 17px 20px 13px;
-          border-bottom: 1px solid #edf1f6;
-        }
-        .dash-panel .panel-title h3 {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 14px;
-        }
-        .consult-list {
-          padding: 6px 10px 10px;
-        }
-        .consult-row {
-          display: flex;
-          width: 100%;
-          align-items: center;
-          gap: 13px;
-          padding: 11px 10px;
-          border: 0;
-          border-radius: 9px;
-          text-align: left;
-          background: transparent;
-          cursor: pointer;
-        }
-        .consult-row:hover {
-          background: #f7faff;
-        }
-        .consult-time {
-          width: 68px;
-          flex: 0 0 auto;
-          color: #96a1b1;
-          font-size: 11px;
-          font-weight: 650;
-        }
-        .consult-info {
-          min-width: 0;
-          flex: 1;
-        }
-        .consult-info strong {
-          display: block;
-          color: #314058;
-          font-size: 13px;
-        }
-        .consult-info small {
-          display: block;
-          margin-top: 3px;
-          color: #8b98aa;
-          font-size: 11px;
-        }
-        .consult-status {
-          flex: 0 0 auto;
-          font-size: 11px;
-          font-weight: 700;
-          text-align: right;
-        }
-        .consult-arrow {
-          flex: 0 0 auto;
-          color: #b5c5da;
-          font-size: 19px;
-        }
-        .patient-avatar.grey {
-          color: #5b6b85;
-          background: #eef2f7;
-        }
-        .quick-actions-list {
-          display: grid;
-          gap: 8px;
-          padding: 14px;
-        }
-        .quick-action-row {
-          display: flex;
-          width: 100%;
-          align-items: center;
-          gap: 11px;
-          padding: 10px;
-          border: 1px solid #e5eaf1;
-          border-radius: 9px;
-          text-align: left;
-          background: #fff;
-          cursor: pointer;
-        }
-        .quick-action-row:hover {
-          border-color: #a6c9f7;
-          background: #f7faff;
-        }
-        .quick-action-icon {
-          display: grid;
-          width: 32px;
-          height: 32px;
-          flex: 0 0 auto;
-          place-items: center;
-          border-radius: 8px;
-          color: #2f80ed;
-          background: #edf5ff;
-        }
-        .quick-action-row strong {
-          display: block;
-          color: #344158;
-          font-size: 12px;
-        }
-        .quick-action-row small {
-          display: block;
-          margin-top: 2px;
-          color: #96a1b1;
-          font-size: 10px;
-        }
-        .review-panel {
-          margin-top: 16px;
-        }
-        .review-badge {
-          display: grid;
-          width: 18px;
-          height: 18px;
-          place-items: center;
-          border-radius: 50%;
-          color: #fff;
-          font-size: 10px;
-          font-weight: 800;
-          background: #ef8b3d;
-        }
-        .review-list {
-          padding: 6px 10px 4px;
-        }
-        .review-row {
-          display: flex;
-          width: 100%;
-          align-items: center;
-          gap: 11px;
-          padding: 9px 10px;
-          border: 0;
-          border-radius: 9px;
-          text-align: left;
-          background: transparent;
-          cursor: pointer;
-        }
-        .review-row:hover {
-          background: #f7faff;
-        }
-        .review-row .patient-avatar {
-          width: 30px;
-          height: 30px;
-          font-size: 10px;
-        }
-        .review-info {
-          min-width: 0;
-          flex: 1;
-        }
-        .review-info strong {
-          display: block;
-          color: #314058;
-          font-size: 12px;
-        }
-        .review-info small {
-          display: block;
-          margin-top: 2px;
-          color: #8b98aa;
-          font-size: 10px;
-        }
-        .review-view-all {
-          display: block;
-          width: 100%;
-          padding: 10px 20px 16px;
-          border: 0;
-          border-top: 1px solid #edf1f6;
-          color: #347ee6;
-          font-size: 11px;
-          font-weight: 700;
-          text-align: right;
-          background: transparent;
-          cursor: pointer;
-        }
-        .activity-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 4px;
-          padding: 6px;
-        }
-        .activity-item {
-          display: flex;
-          gap: 11px;
-          padding: 14px;
-          border-radius: 10px;
-        }
-        .activity-item:hover {
-          background: #f9fbfd;
-        }
-        .activity-icon {
-          display: grid;
-          width: 32px;
-          height: 32px;
-          flex: 0 0 auto;
-          place-items: center;
-          border-radius: 8px;
-        }
-        .activity-item strong {
-          display: block;
-          color: #344158;
-          font-size: 12px;
-        }
-        .activity-item p {
-          margin: 3px 0 0;
-          color: #8996a8;
-          font-size: 10px;
-          line-height: 1.4;
-        }
-        .activity-item time {
-          display: block;
-          margin-top: 6px;
-          color: #a3afc0;
-          font-size: 10px;
-        }
-        @media (max-width: 1180px) {
-          .stat-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          .dash-columns {
-            grid-template-columns: 1fr;
-          }
-        }
-        @media (max-width: 760px) {
-          .stat-grid {
-            grid-template-columns: 1fr;
-          }
-          .activity-grid {
-            grid-template-columns: 1fr;
-          }
-          .dash-greeting-row {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 14px;
-          }
-        }
-      `}</style>
-
       {/* hidden input powering both "Upload Records" buttons */}
       <input
         type="file"
@@ -564,16 +278,16 @@ export default function DashboardPage() {
 
       <div className="dash-greeting-row">
         <div>
-          <h1>{greeting}, Dr. Krishnan</h1>
-          <p>{dateLabel} · Medical Oncology · Tata Memorial Centre</p>
+          <h1>{greeting}, Dr. {userName || "Doctor"}</h1>
+          <p>{dateLabel} · {userDept || "—"}</p>
         </div>
         <div className="dash-greeting-actions">
-          <button className="outline-button" onClick={handleUploadClick}>
+          {/* <button className="outline-button" onClick={handleUploadClick}>
             <Upload size={14} /> Upload Records
           </button>
           <button className="primary-action" onClick={() => navigate("/voice")}>
             <Mic size={14} /> Start Voice
-          </button>
+          </button> */}
         </div>
       </div>
       <div className="stat-grid">
