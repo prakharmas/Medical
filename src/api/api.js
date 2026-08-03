@@ -27,7 +27,8 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     const status = err.response?.status;
-    if (status === 401 || status === 403) {
+    const detail = err.response?.data?.detail;
+    if (status === 401 || status === 403 || detail === "Not authenticated") {
       clearAuthAndRedirect();
     }
     return Promise.reject(err);

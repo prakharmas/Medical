@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { generateMedicalSummary, generateSummaryReport, getUserInfo, listMedicalDocuments, listPatientsDetailed } from "../api/api";
 import BiomarkerChart from "../components/BiomarkerChart";
@@ -10,6 +10,32 @@ function fmtDate(ts) {
     month: "short",
     day: "numeric",
   });
+}
+
+function fmtDob(ts) {
+  if (!ts) return "";
+  return new Date(ts * 1000).toLocaleDateString("en-IN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function fmtAnyDate(v) {
+  if (typeof v !== "number" || !Number.isFinite(v)) return v;
+  if (v > 1e11 && v < 1e14) return fmtDate(v / 1000);
+  if (v > 1e9 && v < 1e11) return fmtDate(v);
+  return v;
+}
+
+function fmtAge(ts) {
+  if (!ts) return "";
+  const birth = new Date(ts * 1000);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+  return age > 0 ? `${age}` : "";
 }
 
 function fmtSources(sources) {
@@ -150,46 +176,303 @@ function formatClinicalSummary(cs) {
   return lines.join("\n");
 }
 
+function genericContent(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(fmtAnyDate(value));
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (v && typeof v === "object" ? Object.entries(v).map(([k, x]) => `${humanizeKey(k)}: ${fmtAnyDate(x)}`).join(", ") : String(fmtAnyDate(v))))
+      .join("\n");
+  }
+  return Object.entries(value)
+    .map(([k, v]) => `${humanizeKey(k)}: ${v && typeof v === "object" ? JSON.stringify(v) : fmtAnyDate(v)}`)
+    .join("\n");
+}
+
 function buildSections(summary) {
   const sections = [];
-  const pc = summary.primary_condition || {};
-  const cs = summary.clinical_summary || {};
 
-  const pcContent = formatPrimaryCondition(pc);
-  if (pcContent) {
-    sections.push({ title: "Primary Condition", content: pcContent, source: "AI Generated" });
-  }
+  const formatters = {
+    primary_condition: formatPrimaryCondition,
+    clinical_summary: formatClinicalSummary,
+    medications: formatMedications,
+    treatment_regimens: formatTreatmentRegimens,
+    active_problems: formatActiveProblems,
+    attention_and_alerts: formatAttentionAlerts,
+    imaging_and_path: formatImagingAndPath,
+    biomarkers: formatBiomarkers,
+    verbal_findings: formatVerbalFindings,
+    clinical_encounters: formatClinicalEncounters,
+    dated_medical_events: formatDatedMedicalEvents,
+    undated_medical_events: formatUndatedMedicalEvents,
+  };
 
-  const csContent = formatClinicalSummary(cs);
-  if (csContent) {
-    sections.push({ title: "Clinical Summary", content: csContent, source: "AI Generated" });
-  }
+  const skipKeys = new Set([
+    "data_health", "overall_relevance", "confidence", "confidence_score",
+    "patient_id", "patient_uid", "attempt_uid", "summary_id", "version",
+    "created_at", "updated_at", "progress", "status", "id",
+  ]);
 
-  const structuredFields = [
-    ["Medications", summary.medications, formatMedications],
-    ["Treatment Regimens", summary.treatment_regimens, formatTreatmentRegimens],
-    ["Active Problems", summary.active_problems, formatActiveProblems],
-    ["Attention & Alerts", summary.attention_and_alerts, formatAttentionAlerts],
-    ["Imaging & Pathology", summary.imaging_and_path, formatImagingAndPath],
-    ["Biomarkers", summary.biomarkers, formatBiomarkers],
-    ["Verbal Findings", summary.verbal_findings, formatVerbalFindings],
-    ["Clinical Encounters", summary.clinical_encounters, formatClinicalEncounters],
-    ["Dated Medical Events", summary.dated_medical_events, formatDatedMedicalEvents],
-    ["Undated Medical Events", summary.undated_medical_events, formatUndatedMedicalEvents],
-  ];
+  for (const [key, value] of Object.entries(summary || {})) {
+    if (skipKeys.has(key) || value == null) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    if (typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0) continue;
+    if (typeof value === "string" && !value.trim()) continue;
 
-  for (const [title, items, formatter] of structuredFields) {
-    if (items?.length) {
-      const section = { title, content: formatter(items), source: "AI Generated" };
-      if (title === "Biomarkers") section.chartData = items;
-      sections.push(section);
-    }
+    const formatter = formatters[key];
+    const section = {
+      title: humanizeKey(key),
+      content: formatter ? formatter(value) : genericContent(value),
+      source: "AI Generated",
+      raw: value,
+    };
+    if (Array.isArray(value)) section.count = value.length;
+    if (key === "biomarkers") section.chartData = value;
+    sections.push(section);
   }
 
   return sections;
 }
 
 const POLL_INTERVAL = 10000;
+
+const TITLE_KEYS = [
+  "name", "title", "diagnosis", "type", "treatment_regimen", "label",
+  "condition", "event", "finding", "test", "problem", "substance",
+];
+const CHIP_KEYS = [
+  "date", "status", "priority", "duration", "trend", "stage_or_severity",
+  "code", "dosage", "unit", "response", "best_response", "result",
+  "severity", "quantity", "count", "value", "icd_code",
+];
+const DESC_KEYS = [
+  "details", "description", "notes", "info", "current_status", "interpretation",
+  "overview", "summary", "narrative", "comments", "recommendation", "advice",
+  "diagnosis_overview", "reason_for_stopping",
+];
+
+function humanizeKey(k) {
+  return k
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function MetricTile({ metric }) {
+  const label = metric.label || metric.name || "";
+  const prev = metric.prev != null ? Number(metric.prev) : null;
+  const curr = metric.current != null ? Number(metric.current) : metric.value != null ? Number(metric.value) : null;
+  const unit = metric.unit || "";
+  const up = prev != null && curr != null && curr > prev;
+  const down = prev != null && curr != null && curr < prev;
+  return (
+    <div className="ai-alert-metric">
+      <span className="ai-alert-metric-label">{label}</span>
+      <div className="ai-alert-metric-values">
+        {prev != null && <span className="ai-alert-metric-prev">{metric.prev}</span>}
+        {up && <span className="ai-alert-metric-trend up">↑</span>}
+        {down && <span className="ai-alert-metric-trend down">↓</span>}
+        {curr != null && (
+          <span className="ai-alert-metric-current">
+            {metric.current ?? metric.value}
+            {unit ? ` ${unit}` : ""}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ArrayBlock({ values }) {
+  const allMetrics = values.every(
+    (v) => v && typeof v === "object" && (v.label != null || v.name != null) && (v.current != null || v.value != null),
+  );
+  if (allMetrics) {
+    return (
+      <div className="ai-alert-metrics">
+        {values.map((m, j) => (
+          <MetricTile key={j} metric={m} />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="ai-item-lines">
+      {values.map((v, j) => {
+        if (v && typeof v === "object") {
+          const title = v.title || v.name || v.label || Object.values(v)[0];
+          const rest =
+            v.info != null
+              ? v.info
+              : v.value != null
+              ? v.value
+              : Object.entries(v)
+                  .filter(([k]) => k !== (v.title ? "title" : v.name ? "name" : v.label ? "label" : Object.keys(v)[0]))
+                  .map(([k, val]) => `${humanizeKey(k)}: ${fmtAnyDate(val)}`)
+                  .join(" · ");
+          return (
+            <div key={j} className="ai-item-line">
+              <span className="ai-item-line-title">{String(fmtAnyDate(title))}</span>
+              {rest != null && String(rest) !== "" && (
+                <span className="ai-item-line-info">{String(fmtAnyDate(rest))}</span>
+              )}
+            </div>
+          );
+        }
+        return (
+          <div key={j} className="ai-item-line">
+            <span className="ai-item-line-info">{String(fmtAnyDate(v))}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GenericItemCard({ item }) {
+  if (typeof item !== "object" || item === null) {
+    return (
+      <div className="ai-item-card">
+        <span className="ai-item-line-info">{String(item)}</span>
+      </div>
+    );
+  }
+  const entries = Object.entries(item).filter(
+    ([, v]) => v != null && v !== "" && !(Array.isArray(v) && v.length === 0),
+  );
+  if (entries.length === 0) return null;
+
+  const titleEntry = entries.find(([k]) => TITLE_KEYS.includes(k));
+  const title = titleEntry ? titleEntry[1] : entries[0][1];
+
+  const chips = [];
+  const descs = [];
+  const arrays = [];
+  for (const [k, v] of entries) {
+    if (titleEntry && k === titleEntry[0]) continue;
+    if (Array.isArray(v)) {
+      arrays.push([k, v]);
+    } else if (DESC_KEYS.includes(k) || String(v).length > 60) {
+      descs.push(v);
+    } else {
+      chips.push([k, v]);
+    }
+  }
+
+  return (
+    <div className="ai-item-card">
+      <div className="ai-item-head">
+        <span className="ai-item-title">{String(fmtAnyDate(title))}</span>
+        {chips.length > 0 && (
+          <div className="ai-item-badges">
+            {chips.map(([k, v], i) => (
+              <span key={i} className="ai-item-badge">{humanizeKey(k)}: {String(fmtAnyDate(v))}</span>
+            ))}
+          </div>
+        )}
+      </div>
+      {descs.length > 0 && <p className="ai-item-desc">{descs.join("\n")}</p>}
+      {arrays.map(([k, arr], i) => (
+        <div key={i} className="ai-item-array">
+          <span className="ai-item-array-label">{humanizeKey(k)}</span>
+          <ArrayBlock values={arr} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AlertItemsView({ items }) {
+  const criticalCount = items.filter(
+    (a) => (a.priority || "").toLowerCase() === "critical",
+  ).length;
+
+  return (
+    <div className="ai-alerts-body">
+      <div className="ai-alerts-head">
+        <span className="ai-alerts-sub">Prioritized findings</span>
+        {criticalCount > 0 && (
+          <span className="ai-alerts-critical">{criticalCount} critical</span>
+        )}
+      </div>
+      <div className="ai-alerts-scroll">
+        {items.map((a, i) => {
+          const priority = (a.priority || "moderate").toLowerCase();
+          const title = a.title || a.name || a.diagnosis || Object.values(a)[0] || "Finding";
+          const details = a.details || a.description || a.info || a.notes || "";
+          return (
+            <div key={i} className={`ai-alert-card priority-${priority}`}>
+              <div className="ai-alert-top">
+                <div className="ai-alert-badges">
+                  {a.priority && (
+                    <span className={`ai-alert-priority pri-${priority}`}>{a.priority}</span>
+                  )}
+                  <h4 className="ai-alert-title">{String(title)}</h4>
+                </div>
+              </div>
+              {details && <p className="ai-alert-desc">{details}</p>}
+              {a.metrics?.length > 0 && (
+                <div className="ai-alert-metrics">
+                  {a.metrics.map((m, j) => (
+                    <MetricTile key={j} metric={m} />
+                  ))}
+                </div>
+              )}
+              <button className="ai-alert-evidence">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M8 3H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" />
+                  <path d="M10 1h5v5" />
+                  <path d="M15 1 8 8" />
+                </svg>
+                View Evidence
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SectionContentView({ section }) {
+  const raw = section.raw;
+  const content = section.content;
+
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return <pre className="ai-section-content">{content}</pre>;
+    if (raw.some((x) => x && typeof x === "object" && x.priority != null)) {
+      return <AlertItemsView items={raw} />;
+    }
+    const allScalar = raw.every((x) => typeof x !== "object" || x === null);
+    if (allScalar) {
+      return (
+        <div className="ai-item-list">
+          {raw.map((x, i) => (
+            <div key={i} className="ai-item-card">
+              <span className="ai-item-line-info">{String(fmtAnyDate(x))}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <div className="ai-item-list">
+        {raw.map((item, i) => (
+          <GenericItemCard key={i} item={item} />
+        ))}
+      </div>
+    );
+  }
+
+  if (raw && typeof raw === "object") {
+    return (
+      <div className="ai-item-list">
+        <GenericItemCard item={raw} />
+      </div>
+    );
+  }
+
+  return <pre className="ai-section-content">{content || (raw != null ? String(raw) : "")}</pre>;
+}
 
 const STEP_LABELS = {
   processing_documents: "Processing documents",
@@ -205,8 +488,10 @@ function formatStepName(tag) {
   return STEP_LABELS[tag] || tag?.replace(/_/g, " ") || "Working…";
 }
 export default function AiSummaryPage() {
-  const { state } = useLocation();
+  const location = useLocation();
+  const { state } = location;
   const [resolvedId, setResolvedId] = useState(state?.patientId || null);
+  const prevKeyRef = useRef(location.key);
 
   const [sections, setSections] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -227,15 +512,37 @@ export default function AiSummaryPage() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportSuccess, setReportSuccess] = useState("");
   const [reportError, setReportError] = useState("");
+  const [advOpen, setAdvOpen] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [selectedPatient, setSelectedPatient] = useState(null);
 
   useEffect(() => {
-    if (resolvedId) return;
+    if (prevKeyRef.current === location.key) return;
+    prevKeyRef.current = location.key;
+    if (location.state?.patientId) return;
+    setSelectingPatient(true);
+    setResolvedId(null);
+    setSections([]);
+    setAccepted(new Set());
+    setExpanded(null);
+    setError("");
+    setProgressSteps([]);
+    setAttemptUid("");
+    setReportSuccess("");
+    setReportError("");
+    setPatientSearch("");
+  }, [location.key]);
 
+  useEffect(() => {
     listPatientsDetailed()
       .then((res) => {
         const patients = res.data.patients || res.data || [];
         setPatientsList(patients);
-        setLoading(false);
+        if (resolvedId) {
+          setSelectedPatient(patients.find((p) => p.uid === resolvedId) || null);
+        } else {
+          setLoading(false);
+        }
       })
       .catch(() => {
         setLoading(false);
@@ -356,9 +663,22 @@ export default function AiSummaryPage() {
   };
 
   const selectPatient = (uid) => {
+    setSelectedPatient(patientsList.find((p) => p.uid === uid) || null);
     setResolvedId(uid);
     setSelectingPatient(false);
     setLoading(true);
+  };
+
+  const handleQuickRefresh = (mode) => {
+    setSections([]);
+    setAccepted(new Set());
+    setExpanded(null);
+    setReportSuccess("");
+    setReportError("");
+    setError("");
+    setProgressSteps([]);
+    setAttemptUid("");
+    setRetryKey((k) => k + 1);
   };
 
   const reviewedCount = accepted.size;
@@ -366,48 +686,109 @@ export default function AiSummaryPage() {
   const confidencePercent = `${Math.round(overallRelevance * 100)}%`;
   const confidenceLabel = overallRelevance >= 0.7 ? "High" : overallRelevance >= 0.4 ? "Medium" : "Low";
 
+  const patientName = selectedPatient?.name || "";
+  const patientInitials = patientName
+    ? patientName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+    : "??";
+  const patientMetaBits = [
+    selectedPatient?.dob ? `${fmtAge(selectedPatient.dob)} y/o` : "",
+    selectedPatient?.gender ? selectedPatient.gender.charAt(0).toUpperCase() + selectedPatient.gender.slice(1) : "",
+    selectedPatient?.dob ? `DOB: ${fmtDob(selectedPatient.dob)}` : "",
+    selectedPatient?.uid ? `UHID ${selectedPatient.uid}` : "",
+  ].filter(Boolean);
+  const alertsSection = sections.find(
+    (s) => Array.isArray(s.raw) && s.raw.some((x) => x && typeof x === "object" && x.priority != null),
+  );
+  const alertsCount = alertsSection?.count || 0;
+
+  const filteredPatients = patientsList.filter((p) =>
+    `${p.name} ${p.uid} ${p.primary_condition?.diagnosis || ""} ${p.doctor_name || ""}`
+      .toLowerCase()
+      .includes(patientSearch.toLowerCase()),
+  );
+
   if (selectingPatient && !loading) {
     return (
       <div className="ai-summary-layout">
         <aside className="ai-source-panel" />
         <div className="ai-summary-center">
-          <div className="ai-progress-container" style={{ alignItems: "stretch", maxWidth: 480, margin: "0 auto" }}>
-            <h3 className="ai-progress-title" style={{ textAlign: "center" }}>Select a Patient</h3>
-            <p className="ai-progress-subtitle" style={{ textAlign: "center" }}>Choose a patient to view their AI Summary.</p>
+          <div className="ai-patient-picker">
+            <div className="ai-patient-picker-head">
+              <div className="ai-patient-picker-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="ai-patient-picker-title">Select a Patient</h3>
+                <p className="ai-patient-picker-sub">Choose a patient to generate their AI Clinical Summary</p>
+              </div>
+            </div>
+
+            <div className="ai-patient-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                value={patientSearch}
+                onChange={(e) => setPatientSearch(e.target.value)}
+                placeholder="Search by name, UHID, or diagnosis…"
+              />
+            </div>
+
+            <div className="ai-patient-list-head">
+              <span>Patient</span>
+              <span>Diagnosis</span>
+            </div>
+
             {patientsList.length === 0 && !error && (
-              <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No patients found.</p>
+              <p className="ai-patient-empty">No patients found.</p>
             )}
             {error && (
-              <p style={{ textAlign: "center", color: "#ef4444", fontSize: 13 }}>{error}</p>
+              <p className="ai-patient-empty" style={{ color: "#ef4444" }}>{error}</p>
             )}
-            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-              {patientsList.map((p) => {
+            {filteredPatients.length === 0 && patientsList.length > 0 && (
+              <p className="ai-patient-empty">No patients match your search.</p>
+            )}
+
+            <div className="ai-patient-list">
+              {filteredPatients.map((p) => {
                 const initials = p.name ? p.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2) : "??";
+                const birth = p.dob ? new Date(p.dob * 1000) : null;
+                let ageStr = "";
+                if (birth) {
+                  const now = new Date();
+                  let age = now.getFullYear() - birth.getFullYear();
+                  const m = now.getMonth() - birth.getMonth();
+                  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+                  ageStr = age > 0 ? String(age) : "";
+                }
+                const genderLabel = p.gender === "male" ? "Male" : p.gender === "female" ? "Female" : "Other";
+                const metaBits = [
+                  ageStr && `${ageStr} yrs`,
+                  genderLabel,
+                  p.uid && `UHID ${p.uid}`,
+                ].filter(Boolean);
                 return (
                   <button
                     key={p.uid}
+                    className="ai-patient-row"
                     onClick={() => selectPatient(p.uid)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                      border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff",
-                      cursor: "pointer", textAlign: "left", transition: "0.12s ease",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
                   >
-                    <span style={{
-                      width: 36, height: 36, borderRadius: "50%", background: "#ede9fe",
-                      color: "#7c3aed", display: "grid", placeItems: "center",
-                      fontSize: 13, fontWeight: 700, flexShrink: 0,
-                    }}>
-                      {initials}
+                    <span className="ai-patient-avatar">{initials}</span>
+                    <span className="ai-patient-main">
+                      <span className="ai-patient-name">{p.name}</span>
+                      <span className="ai-patient-meta">{metaBits.join(" · ")}</span>
                     </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                        {p.primary_condition?.diagnosis || "No diagnosis"}
-                      </div>
-                    </div>
+                    <span className="ai-patient-dx">
+                      {p.primary_condition?.diagnosis || "No diagnosis"}
+                    </span>
+                    <svg className="ai-patient-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14" />
+                      <path d="M13 6l6 6-6 6" />
+                    </svg>
                   </button>
                 );
               })}
@@ -554,18 +935,76 @@ export default function AiSummaryPage() {
                 style={{ width: totalSections ? `${(reviewedCount / totalSections) * 100}%` : "0%" }}
               />
             </div>
-            {/* <button className="ai-export-btn">
+            <button className="ai-export-btn">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="8,17 12,21 16,17" />
                 <line x1="12" y1="12" x2="12" y2="21" />
                 <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
               </svg>
               Export
-            </button> */}
+            </button>
+            <button
+              className="ai-export-btn ai-quick-refresh-btn"
+              onClick={() => handleQuickRefresh("refresh")}
+              title="Quick refresh"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                <polyline points="21 3 21 9 15 9" />
+              </svg>
+              Quick refresh
+            </button>
+            <div className="ai-quick-refresh">
+              <button
+                className="ai-export-btn ai-dots-btn"
+                onClick={() => setAdvOpen(!advOpen)}
+                title="Advance Action"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2" />
+                  <circle cx="12" cy="12" r="2" />
+                  <circle cx="12" cy="19" r="2" />
+                </svg>
+              </button>
+              {advOpen && (
+                <div className="ai-adv-menu">
+                  <div className="ai-adv-menu-title">Advance Action</div>
+                  <button
+                    className="ai-adv-item"
+                    onClick={() => {
+                      setAdvOpen(false);
+                      handleQuickRefresh("rebuild");
+                    }}
+                  >
+                    Rebuild
+                  </button>
+                  <button
+                    className="ai-adv-item"
+                    onClick={() => {
+                      setAdvOpen(false);
+                      handleQuickRefresh("reprocess");
+                    }}
+                  >
+                    Reprocess
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="ai-sections-list">
+          <div className="ai-patient-card">
+            <div className="ai-patient-card-avatar">{patientInitials}</div>
+            <div className="ai-patient-card-info">
+              <p className="ai-patient-card-name">{patientName}</p>
+              <p className="ai-patient-card-meta">{patientMetaBits.join(" · ")}</p>
+            </div>
+            {alertsCount > 0 && (
+              <span className="ai-patient-alerts">{alertsCount} Active Alerts</span>
+            )}
+          </div>
+
           {sections.map((section) => {
             const isAccepted = accepted.has(section.title);
             const isExpanded = expanded === section.title;
@@ -587,8 +1026,13 @@ export default function AiSummaryPage() {
                     )}
                   </span>
                   <span className="ai-section-title">{section.title}</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={`ai-section-chevron ${isExpanded ? "open" : ""}`}>
-                    <path d="M6 9l6 6 6-6" />
+                  {section.count != null && (
+                    <span className={`ai-section-badge ${section.title === "Medications" ? "active" : ""}`}>
+                      {section.title === "Medications" ? `${section.count} active` : section.count}
+                    </span>
+                  )}
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={`ai-section-chevron ${isExpanded ? "open" : ""}`}>
+                    <path d="M4 6l4 4 4-4" />
                   </svg>
                 </button>
 
@@ -607,10 +1051,10 @@ export default function AiSummaryPage() {
                     {section.chartData ? (
                       <BiomarkerChart biomarkers={section.chartData} />
                     ) : (
-                      <pre className="ai-section-content">{section.content}</pre>
+                      <SectionContentView section={section} />
                     )}
                     <div className="ai-section-actions">
-                      {/* <button
+                      <button
                         className={`ai-sec-btn ${isAccepted ? "sec-accepted" : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -656,7 +1100,7 @@ export default function AiSummaryPage() {
                           <circle cx="12" cy="12" r="3" />
                         </svg>
                         Show Evidence
-                      </button> */}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -670,6 +1114,12 @@ export default function AiSummaryPage() {
       <aside className="ai-actions-panel">
         <div className="ai-actions-header">Clinical Actions</div>
         <div className="ai-actions-body">
+          <button className="ai-approve-all" onClick={() => setAccepted(new Set(sections.map((s) => s.title)))}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+            Approve All
+          </button>
           <div className="ai-export-label">Generate Summary Report</div>
           {userRole === "doctor" && (
             <>
@@ -705,7 +1155,7 @@ export default function AiSummaryPage() {
             </>
           )}
 
-          {/* <div className="ai-review-stats">
+          <div className="ai-review-stats">
             <div className="ai-stats-label">Review Progress</div>
             <div className="ai-stat-row">
               <span>Accepted</span>
@@ -739,7 +1189,7 @@ export default function AiSummaryPage() {
               <span>🖨️</span>
               <span className="ai-export-card-text">Print Summary</span>
             </button>
-          </div> */}
+          </div>
 
           {dataHealth.issues?.length > 0 && (
             <div className="ai-flag-card">

@@ -5,6 +5,7 @@ import {
   Users,
   Mic,
   Sparkles,
+  BrainCircuit,
   FileText,
   BarChart3,
   Settings as SettingsIcon,
@@ -22,6 +23,7 @@ const navItems = [
   { id: "patients", path: "/patients", label: "Patients", icon: Users },
   { id: "voice", path: "/voice", label: "Voice", icon: Mic },
   { id: "summary", path: "/ai-summary", label: "AI Summary", icon: Sparkles },
+  { id: "intelligence", path: "/intelligence", label: "Intelligence", icon: BrainCircuit },
   { id: "reports", path: "/reports", label: "Reports", icon: FileText },
   { id: "analytics", path: "/analytics", label: "Analytics", icon: BarChart3 },
   { id: "settings", path: "/settings", label: "Settings", icon: SettingsIcon },
@@ -90,11 +92,13 @@ export default function AppShell() {
   };
 
   const adminHidden = ["dashboard", "patients", "summary"];
-  const visibleNavItems = userInfo.role === "doctor"
-    ? navItems.filter((item) => item.id !== "admin")
-    : userInfo.role === "admin"
-    ? navItems.filter((item) => !adminHidden.includes(item.id))
-    : navItems;
+  const doctorOnly = ["intelligence"];
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.id === "admin" && userInfo.role !== "admin") return false;
+    if (doctorOnly.includes(item.id) && userInfo.role !== "doctor") return false;
+    if (userInfo.role === "admin" && adminHidden.includes(item.id)) return false;
+    return true;
+  });
 
   const displayName = userInfo.name
     ? `Dr. ${userInfo.name.replace(/^dr\.?\s*/i, "")}`

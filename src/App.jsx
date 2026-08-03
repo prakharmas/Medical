@@ -6,6 +6,7 @@ import PatientsPage from "./pages/PatientsPage";
 import VoicePage from "./pages/VoicePage";
 import PatientProfilePage from "./pages/PatientProfilePage";
 import AiSummaryPage from "./pages/AiSummaryPage";
+import IntelligencePage from "./pages/IntelligencePage";
 import ReportsPage from "./pages/ReportsPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -36,6 +37,7 @@ export default function App() {
             path="/ai-summary"
             element={<AiSummaryPage patient="Priya Sharma" />}
           />
+          <Route path="/intelligence" element={<IntelligencePage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
