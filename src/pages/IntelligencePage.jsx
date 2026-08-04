@@ -20,8 +20,10 @@ import {
   TrendingDown,
   AlertTriangle,
   ArrowRight,
+  Trash2,
+  Square,
 } from "lucide-react";
-import { getUserInfo, listPatientsDetailed } from "../api/api";
+import { getUserInfo, listPatientsDetailed, listChatsDetailed, sendChatMessage, getChatMessages, deleteChats, getStreamingChatMessage, cancelChatMessageStream } from "../api/api";
 
 /* ------------------------------------------------------------------ */
 /* Data                                                               */
@@ -273,7 +275,10 @@ function AiMessage({ msg }) {
   const conf = msg.confidence;
   return (
     <div className="ci-msg ci-msg-ai">
-      <p className="ci-answer">{msg.answer}</p>
+      <p className="ci-answer">
+        {msg.answer}
+        {msg.streaming && <span className="ci-cursor" />}
+      </p>
       <div className="ci-conf-row">
         <span className="ci-conf-label">Confidence</span>
         <div className="ci-conf-bar">
@@ -291,26 +296,189 @@ function AiMessage({ msg }) {
   );
 }
 
-function ChatPanel({ suggestions, placeholder }) {
+function extractStreamText(d) {
+  const unwrap = (o) => {
+    if (typeof o?.content === "string") return o.content;
+    if (typeof o?.text === "string") return o.text;
+    if (typeof o?.answer === "string") return o.answer;
+    if (typeof o?.chunk === "string") return o.chunk;
+    if (typeof o?.delta === "string") return o.delta;
+    if (typeof o?.partial === "string") return o.partial;
+    if (o?.message && typeof o.message.content === "string") return o.message.content;
+    if (o?.info && typeof o.info.content === "string") return o.info.content;
+    if (o?.data) return unwrap(o.data);
+    return null;
+  };
+  return unwrap(d);
+}
+
+function isStreamDone(d) {
+  return (
+    d.success === false ||
+    d.completed === true ||
+    d.done === true ||
+    d.finished === true ||
+    d.is_final === true ||
+    d.info?.done === true ||
+    d.info?.interrupted === true
+  );
+}
+
+function ChatPanel({ suggestions, placeholder, chatUid, onChatUpdated }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [loadingChat, setLoadingChat] = useState(false);
+  const chatUidRef = useRef(chatUid || null);
   const bodyRef = useRef(null);
+  const streamTimerRef = useRef(null);
+  const streamCtlRef = useRef({ stopped: true });
+
+  const clearStreamTimer = () => {
+    if (streamTimerRef.current) {
+      clearTimeout(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-  }, [messages, typing]);
+  }, [messages, typing, loadingChat]);
+
+  useEffect(() => {
+    return () => {
+      streamCtlRef.current.stopped = true;
+      clearStreamTimer();
+    };
+  }, []);
+
+  useEffect(() => {
+    streamCtlRef.current.stopped = true;
+    clearStreamTimer();
+    setStreaming(false);
+    setLoadingChat(false);
+    if (!chatUid) {
+      chatUidRef.current = null;
+      setMessages([]);
+      return;
+    }
+    chatUidRef.current = chatUid;
+    setMessages([]);
+    setLoadingChat(true);
+    getChatMessages({ chat_uid: chatUid })
+      .then((res) => {
+        if (res.data.success) {
+          const list = (res.data.messages || []).map((m) =>
+            m.speaker === "user"
+              ? { role: "user", text: m.content }
+              : { role: "ai", answer: m.content, confidence: 90, evidence: [] },
+          );
+          setMessages(list);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingChat(false));
+  }, [chatUid]);
+
+  const pollStream = (chatUid, q) => {
+    streamCtlRef.current = { stopped: false };
+    let attempts = 0;
+    let last = "";
+
+    const upsertAi = (answer) => {
+      setTyping(false);
+      setMessages((m) => {
+        const idx = m.findIndex((x) => x.role === "ai" && x.streaming);
+        if (idx >= 0) {
+          const copy = [...m];
+          copy[idx] = { ...copy[idx], answer, streaming: true };
+          return copy;
+        }
+        return [...m, { role: "ai", answer, streaming: true, confidence: 90, evidence: [] }];
+      });
+    };
+
+    const finalize = () => {
+      streamCtlRef.current.stopped = true;
+      clearStreamTimer();
+      setStreaming(false);
+      setTyping(false);
+      setMessages((m) => {
+        if (m.some((x) => x.role === "ai")) {
+          return m.map((x) => (x.streaming ? { ...x, streaming: false } : x));
+        }
+        return [...m, { role: "ai", ...mockAnswer("single", q) }];
+      });
+      if (onChatUpdated) onChatUpdated();
+    };
+
+    const tick = () => {
+      if (streamCtlRef.current.stopped) return;
+      getStreamingChatMessage({ chat_uid: chatUid })
+        .then((res) => {
+          if (streamCtlRef.current.stopped) return;
+          const d = res.data || {};
+          const text = extractStreamText(d);
+          if (typeof text === "string" && text.length > 0) {
+            last = text;
+            upsertAi(text);
+            attempts = 0;
+          }
+          if (isStreamDone(d)) {
+            finalize();
+            return;
+          }
+          attempts += 1;
+          if (attempts >= 50) {
+            finalize();
+            return;
+          }
+          streamTimerRef.current = setTimeout(tick, 500);
+        })
+        .catch(() => {
+          if (streamCtlRef.current.stopped) return;
+          attempts += 1;
+          if (attempts >= 50) finalize();
+          else streamTimerRef.current = setTimeout(tick, 500);
+        });
+    };
+
+    setStreaming(true);
+    streamTimerRef.current = setTimeout(tick, 400);
+  };
 
   const send = (text) => {
     const q = (text || input).trim();
-    if (!q || typing) return;
+    if (!q || typing || streaming) return;
     setInput("");
     setMessages((m) => [...m, { role: "user", text: q }]);
     setTyping(true);
-    setTimeout(() => {
-      setMessages((m) => [...m, { role: "ai", ...mockAnswer("single", q) }]);
-      setTyping(false);
-    }, 900);
+
+    sendChatMessage({
+      chat_uid: chatUidRef.current,
+      content: q,
+      preset_uid: null,
+    })
+      .then((res) => {
+        if (res.data.success && res.data.chat_uid) {
+          chatUidRef.current = res.data.chat_uid;
+        }
+        pollStream(chatUidRef.current, q);
+      })
+      .catch(() => {
+        setTyping(false);
+        setMessages((m) => [...m, { role: "ai", ...mockAnswer("single", q) }]);
+      });
+  };
+
+  const handleStop = () => {
+    streamCtlRef.current.stopped = true;
+    clearStreamTimer();
+    cancelChatMessageStream({ chat_uid: chatUidRef.current }).catch(() => {});
+    setStreaming(false);
+    setTyping(false);
+    setMessages((m) => m.map((x) => (x.streaming ? { ...x, streaming: false } : x)));
   };
 
   return (
@@ -320,7 +488,15 @@ function ChatPanel({ suggestions, placeholder }) {
           <BrainCircuit size={15} strokeWidth={2} />
           <span>Conversation</span>
         </div>
-        <span className="ci-chat-badge">Copilot</span>
+        <div className="ci-chat-head-right">
+          {streaming && (
+            <button className="ci-stop" onClick={handleStop}>
+              <Square size={12} />
+              Stop generating
+            </button>
+          )}
+          {/* <span className="ci-chat-badge">Copilot</span> */}
+        </div>
       </div>
       <div className="ci-chat-body" ref={bodyRef}>
         {messages.length === 0 && (
@@ -335,6 +511,15 @@ function ChatPanel({ suggestions, placeholder }) {
         {messages.map((m, i) => (
           <AiMessage key={i} msg={m} />
         ))}
+        {loadingChat && (
+          <div className="ci-msg ci-msg-ai">
+            <div className="ci-typing">
+              <i />
+              <i />
+              <i />
+            </div>
+          </div>
+        )}
         {typing && (
           <div className="ci-msg ci-msg-ai">
             <div className="ci-typing">
@@ -510,8 +695,29 @@ function SinglePatientWorkspace() {
 /* Patient Cohort mode                                                 */
 /* ------------------------------------------------------------------ */
 
+function fmtChatDate(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function CohortWorkspace() {
   const [active, setActive] = useState({});
+  const [chats, setChats] = useState([]);
+  const [chatsLoading, setChatsLoading] = useState(true);
+  const [selectedChat, setSelectedChat] = useState(null);
+
+  const refreshChats = () => {
+    listChatsDetailed()
+      .then((res) => {
+        if (res.data.success) setChats(res.data.chats || []);
+      })
+      .catch(() => {})
+      .finally(() => setChatsLoading(false));
+  };
+
+  useEffect(() => {
+    refreshChats();
+  }, []);
 
   const toggle = (gid, opt) => {
     setActive((prev) => {
@@ -525,6 +731,19 @@ function CohortWorkspace() {
 
   const totalApplied = Object.values(active).reduce((n, a) => n + (a ? a.length : 0), 0);
   const matched = 43 + totalApplied * 7;
+
+  const handleDelete = (uid) => {
+    deleteChats({ chat_uids: [uid] })
+      .then((res) => {
+        if (res.data.success) {
+          setChats((prev) => prev.filter((c) => c.uid !== uid));
+          if (selectedChat?.uid === uid) setSelectedChat(null);
+        }
+      })
+      .catch(() => {});
+  };
+
+  const startNewChat = () => setSelectedChat(null);
 
   const distribution = [
     { label: "Stage III", value: 61 },
@@ -540,6 +759,7 @@ function CohortWorkspace() {
 
   return (
     <div className="ci-mode-content">
+      {/*
       <Panel title="Advanced Filters">
         {COHORT_FILTERS.map((g) => (
           <div key={g.id} className="ci-filter-group">
@@ -565,8 +785,54 @@ function CohortWorkspace() {
           </div>
         </div>
       </Panel>
+      */}
 
-      <ChatPanel suggestions={SUGGESTIONS.cohort} placeholder="Ask about this cohort…" />
+      <Panel
+        title="Chats"
+        right={
+          <button className="ci-new-chat-btn" onClick={startNewChat}>
+            <Plus size={13} />
+            New chat
+          </button>
+        }
+      >
+        {chatsLoading && <p className="ci-panel-empty">Loading chats…</p>}
+        {!chatsLoading && chats.length === 0 && <p className="ci-panel-empty">No chats yet.</p>}
+        <div className="ci-chat-list">
+          {chats.map((c) => (
+            <div
+              key={c.uid}
+              className={`ci-chat-row ${selectedChat?.uid === c.uid ? "selected" : ""}`}
+              onClick={() => setSelectedChat(c)}
+            >
+              <span className="ci-chat-title">{c.title || "Untitled conversation"}</span>
+              <span className="ci-chat-meta">
+                <span>{c.num_messages} messages</span>
+                <span>{fmtChatDate(c.ts)}</span>
+                {c.is_mock && <span className="ci-tag soft">mock</span>}
+                <button
+                  className="ci-chat-del"
+                  aria-label="Delete chat"
+                  title="Delete chat"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(c.uid);
+                  }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <ChatPanel
+        suggestions={SUGGESTIONS.cohort}
+        placeholder="Ask about this cohort…"
+        chatUid={selectedChat?.uid}
+        onChatUpdated={refreshChats}
+      />
 
       <Panel title="Cohort Summary">
         <div className="ci-kpi">
@@ -948,7 +1214,10 @@ const CI_CSS = `
 .ci-chat-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #f1f5f9; }
 .ci-chat-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #0f172a; }
 .ci-chat-title svg { color: #2563eb; }
+.ci-chat-head-right { display: flex; align-items: center; gap: 8px; }
 .ci-chat-badge { font-size: 11px; font-weight: 600; color: #2563eb; background: #eff6ff; border: 1px solid #dbeafe; border-radius: 999px; padding: 3px 10px; }
+.ci-stop { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2; color: #dc2626; font-size: 11px; font-weight: 600; cursor: pointer; transition: .12s; }
+.ci-stop:hover { background: #fee2e2; }
 .ci-chat-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; background: #fbfcfe; }
 .ci-chat-empty { margin: auto; text-align: center; max-width: 320px; }
 .ci-chat-empty-icon { width: 52px; height: 52px; border-radius: 16px; background: #eff6ff; color: #2563eb; display: grid; place-items: center; margin: 0 auto 14px; }
@@ -958,6 +1227,8 @@ const CI_CSS = `
 .ci-msg-user { align-self: flex-end; background: #2563eb; color: #fff; border-radius: 14px 14px 4px 14px; padding: 10px 14px; font-size: 13.5px; line-height: 1.5; box-shadow: 0 2px 8px rgba(37,99,235,.2); }
 .ci-msg-ai { align-self: flex-start; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px 14px 14px 4px; padding: 16px; box-shadow: 0 2px 8px rgba(28,53,88,.05); max-width: 92%; }
 .ci-answer { font-size: 14px; color: #334155; line-height: 1.65; margin: 0 0 12px; white-space: pre-wrap; }
+.ci-cursor { display: inline-block; width: 7px; height: 13px; margin-left: 3px; vertical-align: -2px; background: #2563eb; border-radius: 2px; animation: ci-blink 1s steps(2) infinite; }
+@keyframes ci-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .ci-conf-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .ci-conf-label { font-size: 11px; color: #64748b; font-weight: 600; }
 .ci-conf-bar { flex: 1; max-width: 220px; height: 6px; border-radius: 3px; background: #e2e8f0; overflow: hidden; }
@@ -1016,6 +1287,20 @@ const CI_CSS = `
 .ci-filter-chip.active { background: #2563eb; border-color: #2563eb; color: #fff; }
 .ci-date-row { display: flex; gap: 8px; }
 .ci-date-input { flex: 1; padding: 7px 9px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; color: #0f172a; outline: 0; }
+
+/* Cohort chats list */
+.ci-chat-list { display: flex; flex-direction: column; gap: 6px; }
+.ci-chat-row { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; cursor: pointer; text-align: left; transition: .12s; }
+.ci-chat-row:hover { border-color: #bfdbfe; background: #f8fafc; }
+.ci-chat-row.selected { border-color: #2563eb; background: #eff6ff; }
+.ci-chat-row.selected .ci-chat-title { color: #2563eb; }
+.ci-chat-title { font-size: 12.5px; font-weight: 600; color: #0f172a; }
+.ci-chat-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #94a3b8; }
+.ci-chat-meta .ci-tag { margin-left: auto; }
+.ci-chat-del { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: #cbd5e1; cursor: pointer; transition: .12s; }
+.ci-chat-del:hover { background: #fee2e2; color: #dc2626; }
+.ci-new-chat-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border: 1px solid #2563eb; border-radius: 8px; background: #eff6ff; color: #2563eb; font-size: 11px; font-weight: 600; cursor: pointer; transition: .12s; }
+.ci-new-chat-btn:hover { background: #dbeafe; }
 
 /* Cohort + analytics summary */
 .ci-kpi { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 2px; }
