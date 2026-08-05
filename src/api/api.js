@@ -68,6 +68,9 @@ export const listAudioSessionsDetailed = (patientUid) =>
 export const getAudioSessionTranscription = (uid) =>
   api.post("/get-audio-session-transcription", { uid });
 
+export const submitTranscriptionForSummary = (uid) =>
+  api.post("/submit-transcription-for-summary", { uid });
+
 export const uploadRecords = (formData) =>
   api.post("/uploads/records", formData, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -86,6 +89,9 @@ export const listMedicalDocuments = (patientUid) =>
 
 export const generateMedicalSummary = (data) =>
   api.post("/generate-medical-summary", data);
+
+export const stopMedicalSummaryGeneration = (patientUid) =>
+  api.post("/stop-medical-summary-generation", { patient_uid: patientUid });
 
 export const getReports = () => api.get("/reports");
 

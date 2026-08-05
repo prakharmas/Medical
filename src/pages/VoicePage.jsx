@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Square, Loader2, CheckCircle2, AlertCircle, Download, X, FileText } from "lucide-react";
+import { Mic, Square, Loader2, CheckCircle2, AlertCircle, Download, X, FileText, Sparkles } from "lucide-react";
 import {
   listPatientsDetailed,
   createAudioSession,
   uploadAudioSession,
   listAudioSessionsDetailed,
   getAudioSessionTranscription,
+  submitTranscriptionForSummary,
 } from "../api/api";
 import { Mp3Encoder } from "@breezystack/lamejs";
 
@@ -56,6 +57,8 @@ export default function VoicePage() {
   const [transcriptSession, setTranscriptSession] = useState(null);
   const [transcript, setTranscript] = useState(null);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState("");
 
   const intervalRef = useRef(null);
   const recorderRef = useRef(null);
@@ -246,6 +249,7 @@ export default function VoicePage() {
     setTranscriptSession(session);
     setTranscript(null);
     setTranscriptLoading(true);
+    setSubmitStatus("");
     try {
       const res = await getAudioSessionTranscription(session.uid);
       setTranscript({
@@ -261,9 +265,26 @@ export default function VoicePage() {
     }
   };
 
+  const submitForSummary = async () => {
+    if (!transcriptSession) return;
+    setSubmitting(true);
+    setSubmitStatus("");
+    try {
+      await submitTranscriptionForSummary(transcriptSession.uid);
+      setSubmitStatus("Submitted for summary generation.");
+    } catch (err) {
+      setSubmitStatus(
+        err?.response?.data?.detail || err.message || "Failed to submit for summary.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const closeTranscript = () => {
     setTranscriptSession(null);
     setTranscript(null);
+    setSubmitStatus("");
   };
   const statusIcon =
     status.type === "success" ? (
@@ -434,6 +455,28 @@ export default function VoicePage() {
                   {transcript?.pad && <div className="voice-pad">{transcript.pad}</div>}
                 </>
               )}
+            </div>
+            <div className="voice-modal-footer">
+              <span
+                className={`voice-submit-status ${
+                  submitStatus && !submitStatus.startsWith("Failed") ? "success" : "error"
+                }`}
+              >
+                {submitStatus}
+              </span>
+              <button
+                type="button"
+                className="voice-download"
+                onClick={submitForSummary}
+                disabled={submitting || transcriptLoading || !!transcript?.error}
+              >
+                {submitting ? (
+                  <Loader2 size={16} className="voice-spin" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+                Submit for summary
+              </button>
             </div>
           </div>
         </div>

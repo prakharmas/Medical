@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { generateMedicalSummary, generateSummaryReport, getUserInfo, listMedicalDocuments, listPatientsDetailed } from "../api/api";
+import { generateMedicalSummary, generateSummaryReport, getUserInfo, listMedicalDocuments, listPatientsDetailed, stopMedicalSummaryGeneration } from "../api/api";
 import BiomarkerChart from "../components/BiomarkerChart";
 
 function fmtDate(ts) {
@@ -492,6 +492,7 @@ export default function AiSummaryPage() {
   const { state } = location;
   const [resolvedId, setResolvedId] = useState(state?.patientId || null);
   const prevKeyRef = useRef(location.key);
+  const stoppedRef = useRef(false);
 
   const [sections, setSections] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -515,6 +516,8 @@ export default function AiSummaryPage() {
   const [advOpen, setAdvOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [stopLoading, setStopLoading] = useState(false);
+  const [stopStatus, setStopStatus] = useState({ type: "", text: "" });
 
   useEffect(() => {
     if (prevKeyRef.current === location.key) return;
@@ -555,6 +558,8 @@ export default function AiSummaryPage() {
 
     let cancelled = false;
     let timer = null;
+    stoppedRef.current = false;
+    setStopStatus({ type: "", text: "" });
 
     const fetchAndPoll = async () => {
       setLoading(true);
@@ -570,10 +575,10 @@ export default function AiSummaryPage() {
       } catch { /* non-critical */ }
 
       const poll = async () => {
-        if (cancelled) return;
+        if (cancelled || stoppedRef.current) return;
         try {
           const res = await generateMedicalSummary({ patient_uid: resolvedId });
-          if (cancelled) return;
+          if (cancelled || stoppedRef.current) return;
 
           const data = res.data;
 
@@ -602,7 +607,7 @@ export default function AiSummaryPage() {
 
           timer = setTimeout(poll, POLL_INTERVAL);
         } catch {
-          if (!cancelled) {
+          if (!cancelled && !stoppedRef.current) {
             setError("Failed to generate summary. Please try again.");
             setPolling(false);
             setLoading(false);
@@ -628,8 +633,35 @@ export default function AiSummaryPage() {
       .catch(() => {});
   }, []);
 
-  const handleGenerateReport = async (status) => {
-    setReportLoading(true);
+  const handleStopGeneration = async () => {
+    if (!resolvedId) return;
+    setStopLoading(true);
+    setStopStatus({ type: "", text: "" });
+    try {
+      const res = await stopMedicalSummaryGeneration(resolvedId);
+      if (res.data?.success) {
+        stoppedRef.current = true;
+        setPolling(false);
+        setLoading(false);
+        setError("Summary generation stopped.");
+        setStopStatus({ type: "success", text: "Generation stopped." });
+      } else {
+        setStopStatus({
+          type: "error",
+          text: res.data?.reason || "Failed to stop generation.",
+        });
+      }
+    } catch (err) {
+      setStopStatus({
+        type: "error",
+        text: err?.response?.data?.reason || err.message || "Failed to stop generation.",
+      });
+    } finally {
+      setStopLoading(false);
+    }
+  };
+
+  const handleGenerateReport = async (status) => {    setReportLoading(true);
     setReportSuccess("");
     setReportError("");
     try {
@@ -809,6 +841,22 @@ export default function AiSummaryPage() {
             <div className="ai-progress-spinner" />
             <h3 className="ai-progress-title">Generating AI Summary</h3>
             <p className="ai-progress-subtitle">Analyzing medical data for your report…</p>
+            {polling && (
+              <>
+                <button
+                  type="button"
+                  className="ai-stop-button"
+                  onClick={handleStopGeneration}
+                  disabled={stopLoading}
+                >
+                  {stopLoading && <span className="ai-stop-spinner" />}
+                  Stop generation
+                </button>
+                {stopStatus.text && (
+                  <p className={`ai-stop-status ${stopStatus.type}`}>{stopStatus.text}</p>
+                )}
+              </>
+            )}
             {progressSteps.length > 0 && (
               <div className="ai-progress-steps">
                 {progressSteps.slice(-2).map((step, i) => (

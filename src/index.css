@@ -876,6 +876,46 @@ button {
   font-size: 13px;
   color: #94a3b8;
 }
+.ai-stop-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px 18px;
+  border: 1px solid #ef5350;
+  border-radius: 8px;
+  color: #d33f3f;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.ai-stop-button:hover {
+  background: #fef2f2;
+}
+.ai-stop-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.ai-stop-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fecaca;
+  border-top-color: #d33f3f;
+  border-radius: 50%;
+  animation: ai-spin 0.8s linear infinite;
+}
+.ai-stop-status {
+  margin: 0;
+  font-size: 12px;
+}
+.ai-stop-status.success {
+  color: #1e8e3e;
+}
+.ai-stop-status.error {
+  color: #d33f3f;
+}
 .ai-progress-steps {
   display: flex;
   flex-direction: column;
@@ -5261,4 +5301,23 @@ button {
 .voice-modal-empty {
   color: #94a3b8;
   font-style: italic;
+}
+.voice-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid #f1f5f9;
+  background: #fbfdff;
+}
+.voice-submit-status {
+  flex: 1;
+  font-size: 12px;
+}
+.voice-submit-status.success {
+  color: #1e8e3e;
+}
+.voice-submit-status.error {
+  color: #d33f3f;
 }
