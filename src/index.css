@@ -5036,3 +5036,229 @@ button {
     gap: 14px;
   }
 }
+
+/* Voice page */
+.voice-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 24px 32px;
+  text-align: center;
+}
+.voice-patient-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 420px);
+  padding: 10px 14px;
+  border: 1px solid #dce5f0;
+  border-radius: 10px;
+  background: #f9fbfd;
+}
+.voice-patient-select label {
+  font-size: 13px;
+  color: #8b98aa;
+  white-space: nowrap;
+}
+.voice-patient-select select {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #172338;
+  font-size: 14px;
+  font-weight: 600;
+}
+.voice-mic-button {
+  display: grid;
+  place-items: center;
+  width: 108px;
+  height: 108px;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, #2879ea, #1f57bb);
+  box-shadow: 0 10px 26px rgba(47, 128, 237, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+.voice-mic-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(47, 128, 237, 0.34);
+}
+.voice-mic-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.voice-mic-button.recording {
+  background: linear-gradient(135deg, #ef5350, #d33f3f);
+  box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.45);
+  animation: voice-pulse 1.6s ease-out infinite;
+}
+@keyframes voice-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 18px rgba(239, 83, 80, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 83, 80, 0);
+  }
+}
+.voice-timer {
+  margin-top: 6px;
+  color: #172338;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.voice-hint {
+  margin: 0;
+  color: #8b98aa;
+  font-size: 13px;
+}
+.voice-status-card {
+  margin-top: 20px;
+}
+.voice-live-dot {
+  color: #ee4c54;
+  font-size: 11px;
+  font-weight: 700;
+}
+.voice-status-box {
+  min-height: 72px;
+  margin-top: 4px;
+  padding: 18px;
+  border: 1px dashed #dce5f0;
+  border-radius: 10px;
+  background: #f9fbfd;
+}
+.voice-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #96a1b1;
+  font-size: 13px;
+}
+.voice-status-line.success {
+  color: #1e8e3e;
+}
+.voice-status-line.error {
+  color: #d33f3f;
+}
+.voice-status-line.info {
+  color: #2879ea;
+}
+.voice-status-line.idle {
+  font-style: italic;
+  justify-content: center;
+}
+.voice-spin {
+  animation: voice-spin 1s linear infinite;
+}
+@keyframes voice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.voice-playback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+.voice-playback audio {
+  width: 100%;
+  height: 38px;
+}
+.voice-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, #2879ea, #1f57bb);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.voice-download:hover {
+  opacity: 0.9;
+}
+.voice-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.55);
+}
+.voice-modal {
+  width: min(100%, 640px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+.voice-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.voice-modal-header h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #0f172a;
+}
+.voice-modal-header span {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8b98aa;
+}
+.voice-modal-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  background: #f1f5f9;
+  cursor: pointer;
+}
+.voice-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.voice-modal-body .voice-pad {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed #dce5f0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+.voice-modal-empty {
+  color: #94a3b8;
+  font-style: italic;
+}

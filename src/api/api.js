@@ -54,6 +54,20 @@ export const transcribeAudio = (formData) =>
     headers: { "Content-Type": "multipart/form-data" },
   });
 
+export const createAudioSession = (data) =>
+  api.post("/create-audio-session", data);
+
+export const uploadAudioSession = (formData) =>
+  api.post("/upload-audio-session", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+export const listAudioSessionsDetailed = (patientUid) =>
+  api.post("/list-audio-sessions-detailed", { patient_uid: patientUid });
+
+export const getAudioSessionTranscription = (uid) =>
+  api.post("/get-audio-session-transcription", { uid });
+
 export const uploadRecords = (formData) =>
   api.post("/uploads/records", formData, {
     headers: { "Content-Type": "multipart/form-data" },
