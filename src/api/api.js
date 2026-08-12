@@ -107,6 +107,28 @@ export const getDashboard = () => api.post("/dashboard");
 
 export const getUserInfo = () => api.post("/get-user-info");
 
+export const createPadTemplate = (data) =>
+  api.post("/create-pad-template", data);
+
+export const uploadPadTemplate = (formData) =>
+  api.post("/upload-pad-template", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+export const listPadTemplatesDetailed = () =>
+  api.post("/list-pad-templates-detailed");
+
+export const getPadTemplateDetails = (uid) =>
+  api.post("/get-pad-template-details", { uid });
+
+export const getPadTemplateImage = (uid) =>
+  api.post("/get-pad-template-image", { uid }, { responseType: "blob" });
+
+export const editPadTemplate = (data) => api.post("/edit-pad-template", data);
+
+export const renderTranscriptionOnPad = (data) =>
+  api.post("/render-transcription-on-pad", data, { responseType: "blob" });
+
 export const createUser = (data) => api.post("/create-user", data);
 export const listUsersDetailed = () => api.post("/list-users-detailed");
 export const editUser = (data) => api.post("/edit-user-route", data);

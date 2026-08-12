@@ -7,6 +7,8 @@ import {
   listAudioSessionsDetailed,
   getAudioSessionTranscription,
   submitTranscriptionForSummary,
+  listPadTemplatesDetailed,
+  renderTranscriptionOnPad,
 } from "../api/api";
 import { Mp3Encoder } from "@breezystack/lamejs";
 
@@ -59,6 +61,11 @@ export default function VoicePage() {
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState("");
+  const [defaultPadUid, setDefaultPadUid] = useState("");
+  const [defaultPadName, setDefaultPadName] = useState("");
+  const [renderingPadUid, setRenderingPadUid] = useState(null);
+  const [padRender, setPadRender] = useState(null);
+  const [padRenderError, setPadRenderError] = useState("");
 
   const intervalRef = useRef(null);
   const recorderRef = useRef(null);
@@ -116,6 +123,18 @@ export default function VoicePage() {
       cancelled = true;
     };
   }, [patientUid, refreshKey]);
+
+  useEffect(() => {
+    listPadTemplatesDetailed()
+      .then((res) => {
+        const def = (res.data?.pad_templates || []).find((p) => p.is_default);
+        if (def) {
+          setDefaultPadUid(def.uid);
+          setDefaultPadName(def.filename || def.uid);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const formatTime = (total) => {
     const mins = String(Math.floor(total / 60)).padStart(2, "0");
@@ -286,6 +305,72 @@ export default function VoicePage() {
     setTranscript(null);
     setSubmitStatus("");
   };
+
+  const renderOnPad = async (session) => {
+    setPadRenderError("");
+    setPadRender(null);
+    setRenderingPadUid(session.uid);
+    try {
+      let padUid = defaultPadUid;
+      if (!padUid) {
+        const listRes = await listPadTemplatesDetailed();
+        const def = (listRes.data?.pad_templates || []).find((p) => p.is_default);
+        if (!def) {
+          throw new Error(
+            "No default pad template is set. Set a default template in Settings first."
+          );
+        }
+        padUid = def.uid;
+        setDefaultPadUid(padUid);
+      }
+      const res = await renderTranscriptionOnPad({
+        pad_uid: padUid,
+        audio_session_uid: session.uid,
+      });
+      const type = res.data?.type || "";
+      if (type.startsWith("image") || type === "application/pdf") {
+        setPadRender({
+          session,
+          url: URL.createObjectURL(res.data),
+          type: type.startsWith("image") ? "image" : "pdf",
+        });
+      } else {
+        const text = await res.data.text();
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          // ignore
+        }
+        if (parsed?.image_base64) {
+          const base64 = parsed.image_base64.split(",").pop() || parsed.image_base64;
+          setPadRender({
+            session,
+            url: `data:image/png;base64,${base64}`,
+            type: "image",
+          });
+        } else {
+          throw new Error(
+            parsed?.reason || parsed?.detail || "Rendering on pad failed."
+          );
+        }
+      }
+    } catch (err) {
+      setPadRenderError(
+        err?.response?.data?.reason ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          "Failed to render on pad."
+      );
+    } finally {
+      setRenderingPadUid(null);
+    }
+  };
+
+  const closePadRender = () => {
+    if (padRender?.url?.startsWith("blob:")) URL.revokeObjectURL(padRender.url);
+    setPadRender(null);
+  };
   const statusIcon =
     status.type === "success" ? (
       <CheckCircle2 size={20} />
@@ -370,6 +455,13 @@ export default function VoicePage() {
           <span className="admin-table-title">
             Audio Sessions ({sessions.length})
           </span>
+          {defaultPadName && (
+            <span className="voice-default-pad" title={defaultPadUid}>
+              <FileText size={13} />
+              Pad: {defaultPadName}
+              <em>Default</em>
+            </span>
+          )}
           {sessionsLoading && <Loader2 size={16} className="voice-spin" />}
         </div>
         <div className="admin-table-wrapper">
@@ -411,6 +503,19 @@ export default function VoicePage() {
                       >
                         <FileText size={14} />
                         View transcript
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-action-btn"
+                        onClick={() => renderOnPad(s)}
+                        disabled={renderingPadUid === s.uid}
+                      >
+                        {renderingPadUid === s.uid ? (
+                          <Loader2 size={14} className="voice-spin" />
+                        ) : (
+                          <FileText size={14} />
+                        )}
+                        {renderingPadUid === s.uid ? "Rendering…" : "Render on Pad"}
                       </button>
                     </td>
                   </tr>
@@ -476,6 +581,93 @@ export default function VoicePage() {
                   <Sparkles size={16} />
                 )}
                 Submit for summary
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {padRender && (
+        <div className="voice-modal-overlay" onClick={closePadRender}>
+          <div className="voice-modal voice-pad-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="voice-modal-header">
+              <div>
+                <h3>Rendered Pad</h3>
+                <span>{padRender.session.filename}</span>
+              </div>
+              <button
+                type="button"
+                className="voice-modal-close"
+                onClick={closePadRender}
+                aria-label="Close rendered pad"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="voice-modal-body">
+              {padRender.url &&
+                (padRender.type === "pdf" ? (
+                  <iframe
+                    className="voice-pad-pdf"
+                    src={padRender.url}
+                    title="Rendered pad PDF"
+                  />
+                ) : (
+                  <img
+                    className="voice-pad-image"
+                    src={padRender.url}
+                    alt="Rendered pad"
+                  />
+                ))}
+            </div>
+            <div className="voice-modal-footer">
+              <a
+                className="voice-download"
+                href={padRender.url}
+                download={`${padRender.session.filename}.${padRender.type === "pdf" ? "pdf" : "png"}`}
+              >
+                <Download size={16} />
+                Download {padRender.type === "pdf" ? "PDF" : "Image"}
+              </a>
+              <button
+                type="button"
+                className="voice-download"
+                onClick={closePadRender}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {padRenderError && (
+        <div className="voice-modal-overlay">
+          <div className="voice-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="voice-modal-header">
+              <div>
+                <h3>Render on Pad</h3>
+                <span>Could not render transcription</span>
+              </div>
+              <button
+                type="button"
+                className="voice-modal-close"
+                onClick={() => setPadRenderError("")}
+                aria-label="Close error"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="voice-modal-body">
+              <span className="voice-status-line error">{padRenderError}</span>
+            </div>
+            <div className="voice-modal-footer">
+              <button
+                type="button"
+                className="voice-download"
+                onClick={() => setPadRenderError("")}
+              >
+                Close
               </button>
             </div>
           </div>
