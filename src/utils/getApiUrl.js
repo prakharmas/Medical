@@ -19,7 +19,7 @@ export default function getApiUrl() {
       const octets = [match[1], match[2], match[3], match[4]].map(Number);
       if (!octets.some((o) => isNaN(o) || o < 0 || o > 255)) {
         const port = envUrl ? getPortFromUrl(envUrl) : String(DEFAULT_PORT);
-        return `http://${octets.join(".")}:${port}`;
+        return `https://${octets.join(".")}:${port}`;
       }
     }
   }
@@ -29,8 +29,8 @@ export default function getApiUrl() {
 
   // 3. Derive from window hostname (useful when testing on any machine)
   if (typeof window !== "undefined") {
-    return `http://${window.location.hostname}:${DEFAULT_PORT}`;
+    return `https://${window.location.hostname}:${DEFAULT_PORT}`;
   }
 
-  return `http://localhost:${DEFAULT_PORT}`;
+  return `https://localhost:${DEFAULT_PORT}`;
 }
