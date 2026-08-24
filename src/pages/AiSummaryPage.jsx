@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { generateMedicalSummary, generateSummaryReport, getUserInfo, listMedicalDocuments, listPatientsDetailed, stopMedicalSummaryGeneration } from "../api/api";
+import { generateMedicalSummary, generateSummaryReport, getMedicalDocument, getUserInfo, listMedicalDocuments, listPatientsDetailed, stopMedicalSummaryGeneration } from "../api/api";
 import BiomarkerChart from "../components/BiomarkerChart";
 
 function fmtDate(ts) {
@@ -192,6 +192,8 @@ function genericContent(value) {
 function buildSections(summary) {
   const sections = [];
 
+  const PRIORITY_KEYS = ["clinical_summary", "trends", "dated_medical_events"];
+
   const formatters = {
     primary_condition: formatPrimaryCondition,
     clinical_summary: formatClinicalSummary,
@@ -222,6 +224,7 @@ function buildSections(summary) {
     const formatter = formatters[key];
     const section = {
       title: humanizeKey(key),
+      key,
       content: formatter ? formatter(value) : genericContent(value),
       source: "AI Generated",
       raw: value,
@@ -230,6 +233,12 @@ function buildSections(summary) {
     if (key === "biomarkers") section.chartData = value;
     sections.push(section);
   }
+
+  sections.sort((a, b) => {
+    const ai = PRIORITY_KEYS.indexOf(a.key);
+    const bi = PRIORITY_KEYS.indexOf(b.key);
+    return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+  });
 
   return sections;
 }
@@ -347,8 +356,13 @@ function GenericItemCard({ item }) {
   const chips = [];
   const descs = [];
   const arrays = [];
+  let sources = null;
   for (const [k, v] of entries) {
     if (titleEntry && k === titleEntry[0]) continue;
+    if (k === "sources") {
+      if (Array.isArray(v)) sources = v;
+      continue;
+    }
     if (Array.isArray(v)) {
       arrays.push([k, v]);
     } else if (DESC_KEYS.includes(k) || String(v).length > 60) {
@@ -377,6 +391,89 @@ function GenericItemCard({ item }) {
           <ArrayBlock values={arr} />
         </div>
       ))}
+      <SourceLinks sources={sources} />
+    </div>
+  );
+}
+
+async function downloadSourceDocument(docUid) {
+  try {
+    const res = await getMedicalDocument(docUid);
+    const disposition = res.headers?.["content-disposition"] || "";
+    const match = disposition.match(/filename="?(.+?)"?$/);
+    const filename = match ? match[1] : `${docUid}.pdf`;
+    const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch {
+    alert("Failed to download source document.");
+  }
+}
+
+function SourceLinks({ sources }) {
+  const [downloading, setDownloading] = useState(null);
+
+  if (!sources?.length) return null;
+
+  const groups = [];
+  const byDoc = new Map();
+  for (const s of sources) {
+    if (!s?.doc_id) continue;
+    let g = byDoc.get(s.doc_id);
+    if (!g) {
+      g = { doc_id: s.doc_id, pages: [] };
+      byDoc.set(s.doc_id, g);
+      groups.push(g);
+    }
+    if (Number.isFinite(s.page_index) && !g.pages.includes(s.page_index)) {
+      g.pages.push(s.page_index);
+    }
+  }
+  if (!groups.length) return null;
+
+  const handleDownload = async (g) => {
+    setDownloading(g.doc_id);
+    await downloadSourceDocument(g.doc_id);
+    setDownloading(null);
+  };
+
+  return (
+    <div className="ai-source-links">
+      {groups.map((g) => {
+        const pages = g.pages.length
+          ? ` · ${g.pages.length > 1 ? "Pages" : "Page"} ${g.pages.map((p) => p + 1).join(", ")}`
+          : "";
+        return (
+          <button
+            key={g.doc_id}
+            className="ai-source-link"
+            disabled={downloading === g.doc_id}
+            onClick={() => handleDownload(g)}
+            title={`${g.doc_id} — click to download source document`}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14,2 14,8 20,8" />
+            </svg>
+            <span>Source PDF{pages}</span>
+            {downloading === g.doc_id ? (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="ai-source-spin">
+                <path d="M21 12a9 9 0 1 1-6.22-8.56" />
+              </svg>
+            ) : (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="8,17 12,21 16,17" />
+                <line x1="12" y1="12" x2="12" y2="21" />
+              </svg>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -417,14 +514,7 @@ function AlertItemsView({ items }) {
                   ))}
                 </div>
               )}
-              <button className="ai-alert-evidence">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M8 3H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" />
-                  <path d="M10 1h5v5" />
-                  <path d="M15 1 8 8" />
-                </svg>
-                View Evidence
-              </button>
+              <SourceLinks sources={a.sources} />
             </div>
           );
         })}
@@ -514,6 +604,8 @@ export default function AiSummaryPage() {
   const [reportSuccess, setReportSuccess] = useState("");
   const [reportError, setReportError] = useState("");
   const [advOpen, setAdvOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [stopLoading, setStopLoading] = useState(false);
@@ -919,8 +1011,18 @@ export default function AiSummaryPage() {
   return (
     <div className="ai-summary-layout">
       {/* Source Documents Panel */}
-      <aside className="ai-source-panel">
-        <div className="ai-source-header">Source Documents</div>
+      <aside className={`ai-source-panel${sourcesOpen ? " panel-open" : ""}`}>
+        <button
+          type="button"
+          className="ai-source-header ai-panel-toggle"
+          onClick={() => setSourcesOpen((v) => !v)}
+          aria-expanded={sourcesOpen}
+        >
+          <span>Source Documents</span>
+          <svg className="ai-panel-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
         <div className="ai-source-list">
           {documents.length === 0 && (
             <div className="ai-source-empty">No documents uploaded</div>
@@ -989,7 +1091,7 @@ export default function AiSummaryPage() {
                 <line x1="12" y1="12" x2="12" y2="21" />
                 <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
               </svg>
-              Export
+              <span className="ai-btn-label">Export</span>
             </button>
             <button
               className="ai-export-btn ai-quick-refresh-btn"
@@ -1000,7 +1102,7 @@ export default function AiSummaryPage() {
                 <path d="M21 12a9 9 0 1 1-2.64-6.36" />
                 <polyline points="21 3 21 9 15 9" />
               </svg>
-              Quick refresh
+              <span className="ai-btn-label">Quick refresh</span>
             </button>
             <div className="ai-quick-refresh">
               <button
@@ -1042,6 +1144,18 @@ export default function AiSummaryPage() {
         </div>
 
         <div className="ai-sections-list">
+          <div className="ai-disclaimer">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>
+              This Summary is AI - Generated based only on the provided documents.
+              Final clinical responsibility lies with the treating physician
+            </span>
+          </div>
+
           <div className="ai-patient-card">
             <div className="ai-patient-card-avatar">{patientInitials}</div>
             <div className="ai-patient-card-info">
@@ -1159,49 +1273,61 @@ export default function AiSummaryPage() {
       </div>
 
       {/* Clinical Actions Panel */}
-      <aside className="ai-actions-panel">
-        <div className="ai-actions-header">Clinical Actions</div>
+      <aside className={`ai-actions-panel${actionsOpen ? " panel-open" : ""}`}>
+        <button
+          type="button"
+          className="ai-actions-header ai-panel-toggle"
+          onClick={() => setActionsOpen((v) => !v)}
+          aria-expanded={actionsOpen}
+        >
+          <span>Clinical Actions</span>
+          <svg className="ai-panel-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
         <div className="ai-actions-body">
-          <button className="ai-approve-all" onClick={() => setAccepted(new Set(sections.map((s) => s.title)))}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-            Approve All
-          </button>
-          <div className="ai-export-label">Generate Summary Report</div>
-          {userRole === "doctor" && (
-            <>
-              {reportSuccess && (
-                <p style={{ color: "#059669", fontSize: 12, margin: "4px 0" }}>{reportSuccess}</p>
-              )}
-              {reportError && (
-                <p style={{ color: "#dc2626", fontSize: 12, margin: "4px 0" }}>{reportError}</p>
-              )}
-              <button
-                className="ai-export-card"
-                style={{ borderColor: "#059669", color: "#059669" }}
-                disabled={reportLoading}
-                onClick={() => handleGenerateReport("approved")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
-                <span className="ai-export-card-text">{reportLoading ? "Submitting..." : "Approved"}</span>
-              </button>
-              <button
-                className="ai-export-card"
-                style={{ borderColor: "#dc2626", color: "#dc2626" }}
-                disabled={reportLoading}
-                onClick={() => handleGenerateReport("flagged")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                  <line x1="4" y1="22" x2="4" y2="15" />
-                </svg>
-                <span className="ai-export-card-text">{reportLoading ? "Submitting..." : "Flagged"}</span>
-              </button>
-            </>
-          )}
+          <div className="ai-action-group">
+            <button className="ai-approve-all" onClick={() => setAccepted(new Set(sections.map((s) => s.title)))}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+              Approve All
+            </button>
+            <div className="ai-export-label">Generate Summary Report</div>
+            {userRole === "doctor" && (
+              <>
+                {reportSuccess && (
+                  <p style={{ color: "#059669", fontSize: 12, margin: "4px 0" }}>{reportSuccess}</p>
+                )}
+                {reportError && (
+                  <p style={{ color: "#dc2626", fontSize: 12, margin: "4px 0" }}>{reportError}</p>
+                )}
+                <button
+                  className="ai-export-card"
+                  style={{ borderColor: "#059669", color: "#059669" }}
+                  disabled={reportLoading}
+                  onClick={() => handleGenerateReport("approved")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                  <span className="ai-export-card-text">{reportLoading ? "Submitting..." : "Approved"}</span>
+                </button>
+                <button
+                  className="ai-export-card"
+                  style={{ borderColor: "#dc2626", color: "#dc2626" }}
+                  disabled={reportLoading}
+                  onClick={() => handleGenerateReport("flagged")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                    <line x1="4" y1="22" x2="4" y2="15" />
+                  </svg>
+                  <span className="ai-export-card-text">{reportLoading ? "Submitting..." : "Flagged"}</span>
+                </button>
+              </>
+            )}
+          </div>
 
           <div className="ai-review-stats">
             <div className="ai-stats-label">Review Progress</div>

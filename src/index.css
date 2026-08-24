@@ -705,7 +705,8 @@ button {
 /* AI Summary — 3-panel Figma layout */
 .ai-summary-layout {
   display: grid;
-  grid-template-columns: 224px minmax(0, 1fr) 256px;
+  grid-template-columns: minmax(200px, 228px) minmax(0, 1fr) minmax(248px, 276px);
+  width: 100%;
   min-height: calc(100vh - 56px);
   height: auto;
   border: 1px solid #e2e8f0;
@@ -845,6 +846,8 @@ button {
   overflow: visible;
   background: #fff;
   min-height: 0;
+  /* Inherited: long clinical text always wraps instead of overflowing */
+  overflow-wrap: break-word;
 }
 
 .ai-progress-container {
@@ -1143,6 +1146,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 8px;
   padding: 12px 24px;
   border-bottom: 1px solid #e2e8f0;
   background: #fff;
@@ -1839,6 +1844,8 @@ button {
   border-left: 1px solid #e2e8f0;
   background: #fff;
   overflow: hidden;
+  /* Inherited: flag-card text always wraps, never overflows */
+  overflow-wrap: break-word;
 }
 .ai-actions-header {
   padding: 12px 16px;
@@ -1856,6 +1863,13 @@ button {
   display: grid;
   gap: 12px;
   align-content: start;
+}
+/* Logical grouping of controls — one card per responsive grid cell */
+.ai-action-group {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
 }
 .ai-approve-all {
   display: flex;
@@ -1976,6 +1990,65 @@ button {
   line-height: 1.4;
 }
 
+/* AI Source Download Links */
+.ai-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.ai-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.ai-source-link:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+.ai-source-link:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.ai-source-spin {
+  animation: ai-source-rotate 0.8s linear infinite;
+}
+@keyframes ai-source-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* AI Disclaimer */
+.ai-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  background: #fffbeb;
+}
+.ai-disclaimer svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.ai-disclaimer span {
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Floating AI Button */
 .ai-fab {
   position: fixed;
@@ -1999,47 +2072,294 @@ button {
 }
 
 /* Responsive for AI Summary */
-@media (max-width: 1100px) {
+/* Grid children must be allowed to shrink below their content size */
+.ai-source-panel,
+.ai-summary-center,
+.ai-actions-panel {
+  min-width: 0;
+}
+/* Empty placeholder panels (loading/error/picker states) stay hidden */
+.ai-actions-panel:empty {
+  display: none;
+}
+
+/* Collapsible panel headers — toggles only activate on small screens */
+.ai-panel-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+}
+.ai-panel-toggle .ai-panel-chevron {
+  display: none;
+  flex-shrink: 0;
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+}
+.ai-panel-toggle[aria-expanded="true"] .ai-panel-chevron {
+  transform: rotate(180deg);
+}
+
+/*
+ * Breakpoint map
+ *   >=1444px : 3 columns (Source Docs | Summary | Clinical Actions)
+ *   <1444px  : 2 columns, Clinical Actions stacks full-width below the summary
+ *   <=1024px : narrower left sidebar
+ *   <=768px  : fully stacked; both sidebars become collapsible sections
+ */
+@media (max-width: 1443px) {
   .ai-summary-layout {
-    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-columns: minmax(176px, 208px) minmax(0, 1fr);
+    align-content: start;
   }
+  /* Clinical Actions moves below the summary instead of squeezing it */
   .ai-actions-panel {
-    display: none;
+    grid-column: 1 / -1;
+    display: flex;
+    border-left: 0;
+    border-top: 1px solid #e2e8f0;
+    max-height: none;
+  }
+  .ai-source-header,
+  .ai-actions-header {
+    cursor: default;
+  }
+  .ai-actions-header {
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .ai-actions-body {
+    overflow: visible;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 14px;
   }
 }
-@media (max-width: 850px) {
+@media (max-width: 1024px) {
+  .ai-summary-layout {
+    grid-template-columns: minmax(152px, 184px) minmax(0, 1fr);
+  }
+}
+@media (max-width: 768px) {
   .ai-summary-layout {
     grid-template-columns: 1fr;
-    margin: -20px -14px;
+    align-content: start;
+    min-height: 0;
   }
-  .ai-source-panel {
-    display: none;
+  /* All panels flow naturally — the page itself scrolls, nothing is clipped */
+  .ai-source-panel,
+  .ai-summary-center,
+  .ai-actions-panel,
+  .ai-sections-list {
+    overflow: visible;
+    min-height: 0;
+    height: auto;
+    max-height: none;
   }
   .ai-sections-list {
-    padding: 16px;
+    flex: none;
+    padding: 16px 14px;
+  }
+
+  /* Sidebar headers become real toggles */
+  .ai-panel-toggle {
+    cursor: pointer;
+  }
+  .ai-panel-toggle .ai-panel-chevron {
+    display: block;
+  }
+
+  /* Collapsed by default on mobile */
+  .ai-source-panel:not(.panel-open) :is(.ai-source-list, .ai-confidence-footer),
+  .ai-actions-panel:not(.panel-open) .ai-actions-body {
+    display: none;
+  }
+
+  /* Source Documents: collapsible horizontal strip */
+  .ai-source-panel {
+    display: flex;
+    border-right: 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .ai-source-header {
+    padding: 12px 14px;
+  }
+  .ai-source-list {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 14px 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ai-source-item {
+    flex: 0 0 auto;
+    width: 210px;
+    border: 1px solid #f1f5f9;
+    border-radius: 10px;
+    background: #f8fafc;
+    cursor: default;
+  }
+  .ai-source-item .ai-source-name {
+    max-width: 150px;
+  }
+  .ai-confidence-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px 12px;
+    border-top: 1px solid #f1f5f9;
+  }
+  .ai-confidence-label {
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+  .ai-confidence-bar {
+    flex: 1;
+  }
+
+  /* Clinical Actions: collapsible accordion below the summary */
+  .ai-actions-panel {
+    border-top: 1px solid #e2e8f0;
+  }
+  .ai-actions-header {
+    padding: 12px 14px;
+    border-bottom: 0;
+  }
+  .ai-actions-body {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 2px 14px 16px;
+  }
+
+  .ai-summary-sticky-header {
+    padding: 10px 14px;
+  }
+}
+@media (max-width: 760px) {
+  .ai-summary-layout {
+    margin: -20px -14px;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+}
+@media (max-width: 640px) {
+  .ai-progress-bar-mini {
+    display: none;
+  }
+  .ai-quick-refresh-btn .ai-btn-label {
+    display: none;
+  }
+  .ai-export-btn {
+    padding: 7px 11px;
+    font-size: 11.5px;
+  }
+  .ai-adv-menu {
+    min-width: 150px;
   }
 }
 @media (max-width: 560px) {
   .ai-summary-sticky-header {
-    padding: 10px 16px;
+    padding: 10px 12px;
+  }
+  .ai-summary-progress-text {
+    font-size: 10.5px;
+  }
+  .ai-sections-list {
+    padding: 12px;
+    gap: 6px;
+  }
+  .ai-patient-card {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .ai-patient-card-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 12px;
+  }
+  .ai-patient-card-name {
+    font-size: 14px;
+  }
+  .ai-patient-card-meta {
+    white-space: normal;
+    font-size: 12px;
+  }
+  .ai-disclaimer {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+  }
+  .ai-disclaimer span {
+    font-size: 11px;
   }
   .ai-section-header {
-    padding: 10px 12px;
+    padding: 12px 14px;
     gap: 8px;
   }
   .ai-section-title {
-    font-size: 13px;
+    font-size: 13.5px;
+  }
+  .ai-section-badge {
+    font-size: 11px;
+    padding: 2px 8px;
   }
   .ai-section-body {
-    padding: 10px 12px 14px;
+    padding: 12px 14px 14px;
   }
   .ai-section-content {
-    font-size: 13px;
-    max-height: 60vh;
+    font-size: 12.5px;
+    max-height: 55vh;
+    padding: 12px;
+  }
+  .ai-item-card,
+  .ai-alert-card {
+    padding: 11px 12px;
+  }
+  .ai-alert-title {
+    font-size: 14px;
+  }
+  .ai-alerts-scroll {
+    max-height: none;
+  }
+  .ai-item-line {
+    flex-wrap: wrap;
+  }
+  .ai-item-line-info,
+  .ai-item-desc {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .ai-alert-metric {
+    min-width: 78px;
+    padding: 7px 9px;
   }
   .ai-sec-btn {
     padding: 5px 8px;
     font-size: 11px;
+  }
+  .ai-fab {
+    bottom: 16px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (max-width: 480px) {
+  .ai-section-body .bio-charts-grid {
+    grid-template-columns: 1fr;
+  }
+  .ai-section-body .bio-card-stats {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 16px;
+  }
+  .ai-section-body .bio-stat {
+    align-items: flex-start;
   }
 }
 /* Settings - Figma rebuild */

@@ -87,6 +87,9 @@ export const uploadMedicalDocument = (formData) =>
 export const listMedicalDocuments = (patientUid) =>
   api.post("/list-medical-documents", { patient_uid: patientUid });
 
+export const getMedicalDocument = (uid) =>
+  api.post("/get-medical-document", { uid }, { responseType: "blob" });
+
 export const generateMedicalSummary = (data) =>
   api.post("/generate-medical-summary", data);
 
