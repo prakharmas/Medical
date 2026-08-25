@@ -266,6 +266,31 @@ function humanizeKey(k) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function collectSources(item) {
+  if (!item || typeof item !== "object") return [];
+  const collected = [];
+  const seen = new Set();
+  const add = (s) => {
+    if (!s || typeof s !== "object" || !s.doc_id) return;
+    const key = `${s.doc_id}:${s.page_index}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    collected.push(s);
+  };
+  if (Array.isArray(item.sources)) item.sources.forEach(add);
+  for (const v of Object.values(item)) {
+    if (Array.isArray(v)) {
+      for (const el of v) {
+        if (el && typeof el === "object") {
+          if (el.source) add(el.source);
+          if (Array.isArray(el.sources)) el.sources.forEach(add);
+        }
+      }
+    }
+  }
+  return collected;
+}
+
 function MetricTile({ metric }) {
   const label = metric.label || metric.name || "";
   const prev = metric.prev != null ? Number(metric.prev) : null;
@@ -318,12 +343,14 @@ function ArrayBlock({ values }) {
                   .filter(([k]) => k !== (v.title ? "title" : v.name ? "name" : v.label ? "label" : Object.keys(v)[0]))
                   .map(([k, val]) => `${humanizeKey(k)}: ${fmtAnyDate(val)}`)
                   .join(" · ");
+          const itemSources = collectSources(v);
           return (
             <div key={j} className="ai-item-line">
               <span className="ai-item-line-title">{String(fmtAnyDate(title))}</span>
               {rest != null && String(rest) !== "" && (
                 <span className="ai-item-line-info">{String(fmtAnyDate(rest))}</span>
               )}
+              {itemSources.length > 0 && <SourceLinks sources={itemSources} />}
             </div>
           );
         }
@@ -356,13 +383,9 @@ function GenericItemCard({ item }) {
   const chips = [];
   const descs = [];
   const arrays = [];
-  let sources = null;
   for (const [k, v] of entries) {
     if (titleEntry && k === titleEntry[0]) continue;
-    if (k === "sources") {
-      if (Array.isArray(v)) sources = v;
-      continue;
-    }
+    if (k === "sources" || k === "source") continue;
     if (Array.isArray(v)) {
       arrays.push([k, v]);
     } else if (DESC_KEYS.includes(k) || String(v).length > 60) {
@@ -371,6 +394,8 @@ function GenericItemCard({ item }) {
       chips.push([k, v]);
     }
   }
+
+  const mergedSources = collectSources(item);
 
   return (
     <div className="ai-item-card">
@@ -391,7 +416,7 @@ function GenericItemCard({ item }) {
           <ArrayBlock values={arr} />
         </div>
       ))}
-      <SourceLinks sources={sources} />
+      {mergedSources.length > 0 && <SourceLinks sources={mergedSources} />}
     </div>
   );
 }
