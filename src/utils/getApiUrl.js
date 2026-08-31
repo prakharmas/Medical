@@ -10,6 +10,9 @@ function getPortFromUrl(url) {
 }
 
 export default function getApiUrl() {
+   if (window.location.protocol == 'https:') {
+    return 'https://' + window.location.hostname + '/backend-openapi';
+  }
   const envUrl = import.meta.env.VITE_API_URL || "";
 
   // 1. Hash override: #api-10-0-0-5
