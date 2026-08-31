@@ -85,7 +85,10 @@ export const uploadMedicalDocument = (formData) =>
   });
 
 export const listMedicalDocuments = (patientUid) =>
-  api.post("/list-medical-documents", { patient_uid: patientUid });
+  api.post("/list-medical-documents", {
+    patient_uid: patientUid,
+    type_tags: ["any"],
+  });
 
 export const getMedicalDocument = (uid) =>
   api.post("/get-medical-document", { uid }, { responseType: "blob" });
@@ -110,6 +113,11 @@ export const getDashboard = () => api.post("/dashboard");
 
 export const getUserInfo = () => api.post("/get-user-info");
 
+export const createTextNote = (data) => api.post("/create-text-note", data);
+
+export const listTextNotes = (patientUid) =>
+  api.post("/list-text-notes", { patient_uid: patientUid });
+
 export const createPadTemplate = (data) =>
   api.post("/create-pad-template", data);
 
@@ -127,11 +135,14 @@ export const getPadTemplateDetails = (uid) =>
 export const getPadTemplateImage = (uid) =>
   api.post("/get-pad-template-image", { uid }, { responseType: "blob" });
 
-export const editPadTemplate = (data) => api.post("/edit-pad-template", data);
+export const editPadTemplateDefault = (data) =>
+  api.post("/edit-pad-template-default", data);
 
 export const renderTranscriptionOnPad = (data) =>
-  api.post("/render-transcription-on-pad", data, { responseType: "blob" });
+  api.post("/render-pad", data, { responseType: "blob" });
 
+export const downloadRenderedPad = (data) =>
+  api.post("/download-rendered-pad", data, { responseType: "blob" });
 export const createUser = (data) => api.post("/create-user", data);
 export const listUsersDetailed = () => api.post("/list-users-detailed");
 export const editUser = (data) => api.post("/edit-user-route", data);
