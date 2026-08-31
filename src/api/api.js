@@ -143,6 +143,8 @@ export const renderTranscriptionOnPad = (data) =>
 
 export const downloadRenderedPad = (data) =>
   api.post("/download-rendered-pad", data, { responseType: "blob" });
+export const checkRenderPadStatus = (data) =>
+  api.post("/check-render-pad-status", data);
 export const createUser = (data) => api.post("/create-user", data);
 export const listUsersDetailed = () => api.post("/list-users-detailed");
 export const editUser = (data) => api.post("/edit-user-route", data);

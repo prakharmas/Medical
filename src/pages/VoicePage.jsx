@@ -11,6 +11,7 @@ import {
   listPadTemplatesDetailed,
   renderTranscriptionOnPad,
   downloadRenderedPad,
+  checkRenderPadStatus,
   createTextNote,
   listTextNotes,
 } from "../api/api";
@@ -107,6 +108,35 @@ async function refitPdfBlob(blob) {
   }
   const outBytes = await dstDoc.save();
   return new Blob([outBytes], { type: "application/pdf" });
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function errorBodyToMessage(err) {
+  const statusMsg = err?.response?.status ? `HTTP ${err.response.status}. ` : "";
+  let body = "";
+  if (err?.response?.data instanceof Blob) {
+    try {
+      body = await err.response.data.text();
+    } catch {
+      body = "";
+    }
+  } else if (typeof err?.response?.data === "object") {
+    body = JSON.stringify(err.response.data);
+  }
+  const detailMatch = body.match(/"detail"\s*:\s*"([^"]*)"/);
+  const detail = detailMatch ? detailMatch[1] : body;
+  return `${statusMsg}${detail || err?.message || "Failed to download rendered pad."}`.trim();
+}
+
+function isNotFoundError(err) {
+  if (err?.response?.status === 404) return true;
+  const msg = `${err?.message || ""} ${
+    err?.response?.data instanceof Blob
+      ? ""
+      : JSON.stringify(err?.response?.data) || ""
+  }`;
+  return /not\s*found/i.test(msg);
 }
 
 export default function VoicePage() {
@@ -410,6 +440,7 @@ export default function VoicePage() {
     setPadRenderError("");
     setPadRender(null);
     setRenderingPadUid("multi");
+    let completed = false;
     try {
       let padUid = defaultPadUid;
       if (!padUid) {
@@ -435,6 +466,7 @@ export default function VoicePage() {
           url: URL.createObjectURL(res.data),
           type: type.startsWith("image") ? "image" : "pdf",
         });
+        completed = true;
       } else {
         const text = await res.data.text();
         let parsed = null;
@@ -450,11 +482,39 @@ export default function VoicePage() {
             url: `data:image/png;base64,${base64}`,
             type: "image",
           });
+          completed = true;
         } else if (parsed?.success && parsed?.render_uid) {
           let renderUid = parsed.render_uid;
           let downloaded = null;
-          try {
+          let statusError = null;
+          const maxPollAttempts = 40;
+          let ready = false;
+          for (let attempt = 1; attempt <= maxPollAttempts; attempt += 1) {
+            try {
+              const statusRes = await checkRenderPadStatus({ uid: renderUid });
+              const status = statusRes?.data?.status || "";
+              if (/done|ready|complete|success/i.test(status)) {
+                ready = true;
+                break;
+              }
+              if (/fail|error|cancel|invalid|not found/i.test(status)) {
+                statusError = `Rendering failed (status: ${status}).`;
+                break;
+              }
+            } catch (err) {
+              if (isNotFoundError(err)) {
+                await wait(1500);
+                continue;
+              }
+              throw err;
+            }
+            await wait(1500);
+          }
+          if (ready) {
             const downRes = await downloadRenderedPad({ uid: renderUid });
+            if (downRes.status !== 200) {
+              throw new Error(await errorBodyToMessage(downRes));
+            }
             downloaded = await classifyRenderBlob(downRes.data);
             if (downloaded) downloaded.renderUid = renderUid;
             if (downloaded?.type === "pdf") {
@@ -462,23 +522,24 @@ export default function VoicePage() {
               if (downloaded.url) URL.revokeObjectURL(downloaded.url);
               downloaded.url = URL.createObjectURL(refitted);
             }
-          } catch {
-            downloaded = null;
+          } else {
+            throw new Error(
+              statusError || "Rendered pad is taking too long. Please try again."
+            );
           }
-          if (downloaded) {
+          if (ready && downloaded) {
             setPadRender({
               sessions: srcUids,
               url: downloaded.url,
               type: downloaded.type,
               renderUid: downloaded.renderUid,
             });
+            completed = true;
           } else {
-            setPadRender({
-              sessions: srcUids,
-              url: null,
-              type: "none",
-              renderUid,
-            });
+            throw new Error(
+              statusError ||
+                "Rendered pad is not ready for download. Please try again."
+            );
           }
         } else {
           throw new Error(
@@ -487,6 +548,7 @@ export default function VoicePage() {
         }
       }
     } catch (err) {
+      setRenderingPadUid(null);
       setPadRenderError(
         err?.response?.data?.reason ||
           err?.response?.data?.detail ||
@@ -494,7 +556,7 @@ export default function VoicePage() {
           "Failed to render on pad."
       );
     } finally {
-      setRenderingPadUid(null);
+      if (completed) setRenderingPadUid(null);
     }
   };
 
