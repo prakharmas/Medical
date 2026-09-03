@@ -1107,14 +1107,14 @@ export default function IntelligencePage() {
   }, []);
 
   if (!roleLoaded) return null;
-  if (role !== "doctor") {
+  if (role !== "doctor" && role !== "admin") {
     return (
       <div className="ci-access-denied">
         <div className="ci-ai-badge">
           <ShieldCheck size={20} strokeWidth={1.8} />
         </div>
         <h1>ClinIQ Intelligence</h1>
-        <p>This workspace is available to doctors only. Contact your administrator for access.</p>
+        <p>This workspace is available to doctors and admins only. Contact your administrator for access.</p>
       </div>
     );
   }

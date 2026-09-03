@@ -92,7 +92,7 @@ export default function AppShell() {
   };
 
   const adminHidden = ["dashboard", "patients", "summary"];
-  const doctorOnly = ["voice", "intelligence"];
+  const doctorOnly = ["voice"];
   const visibleNavItems = navItems.filter((item) => {
     if (item.id === "admin" && userInfo.role !== "admin") return false;
     if (doctorOnly.includes(item.id) && userInfo.role !== "doctor") return false;
